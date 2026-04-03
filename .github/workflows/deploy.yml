@@ -1,0 +1,106 @@
+name: Deploy Lecsum
+
+on:
+  push:
+    branches:
+      - main        # deploys to prod
+      - staging     # deploys to staging
+  pull_request:
+    branches:
+      - main        # runs tests only, no deploy
+
+env:
+  AWS_REGION: us-east-2
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  # ── 1. TEST ────────────────────────────────────────────────────────────────
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v --tb=short
+
+      - name: Run linter
+        run: |
+          ruff check lambdas/
+
+      - name: Check formatting
+        run: |
+          ruff format --check lambdas/
+
+  # ── 2. DEPLOY TO STAGING ───────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy → staging
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package and deploy Lambdas
+        run: |
+          bash scripts/deploy.sh staging
+
+      - name: Run smoke tests against staging
+        run: |
+          pytest tests/integration/ -v --env=staging
+
+  # ── 3. DEPLOY TO PROD ─────────────────────────────────────────────────────
+  deploy-prod:
+    name: Deploy → prod
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: prod          # requires manual approval in GitHub UI
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package and deploy Lambdas
+        run: |
+          bash scripts/deploy.sh prod
+
+      - name: Run smoke tests against prod
+        run: |
+          pytest tests/integration/ -v --env=prod
