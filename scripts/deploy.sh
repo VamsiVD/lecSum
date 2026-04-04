@@ -16,8 +16,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 # Lambda names follow the pattern: lecsum-<function>-<env>
 LAMBDAS=(
   "transcribe_trigger"
-  "transcript_parser"
-  "orchestrator"
 )
 
 for LAMBDA in "${LAMBDAS[@]}"; do
