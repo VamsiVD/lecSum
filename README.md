@@ -11,7 +11,7 @@ Turn lecture recordings into study materials. Upload an audio file, get a transc
 
 ## Tech stack
 
-| Layer | Tech |
+| Layer | Tech | 
 |---|---|
 | Frontend | Next.js 15, Tailwind CSS, shadcn/ui |
 | Backend | AWS Lambda (Python 3.14) |
@@ -19,7 +19,7 @@ Turn lecture recordings into study materials. Upload an audio file, get a transc
 | AI | Amazon Bedrock (Claude 3 Haiku) |
 | Storage | S3 (3 buckets), DynamoDB |
 | CI/CD | GitHub Actions |
-| Deployment | Vercel (web), EAS (mobile — coming soon) |
+| Deployment | Vercel (web), EAS (mobile —  in Progress) |
 
 ## Architecture
 
