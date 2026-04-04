@@ -34,7 +34,7 @@ def lambda_handler(event, context):
     print(f"Raw event: {json.dumps(event)}")
     # 5. Start the transcription job
     try:
-        response = transcribe_client.start_transcription_job(
+        transcribe_client.start_transcription_job(
             TranscriptionJobName=job_name,
             Media={'MediaFileUri': file_uri},
             MediaFormat=file_extension,
