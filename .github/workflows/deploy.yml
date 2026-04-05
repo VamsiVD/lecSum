@@ -74,28 +74,33 @@ jobs:
       #  run: |
       #    pytest tests/integration/ -v --env=staging
 
-  # ── 3. DEPLOY TO PROD ─────────────────────────────────────────────────────
+# ── 3. DEPLOY TO PROD ─────────────────────────────────────────────────────
   deploy-prod:
     name: Deploy → prod
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    environment: prod          # requires manual approval in GitHub UI
+    environment: prod
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      # ADD THIS STEP: Install the test tools in this specific environment
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-dev.txt
 
       - name: Package and deploy Lambdas
         run: |
