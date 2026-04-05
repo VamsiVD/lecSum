@@ -30,13 +30,11 @@ export async function GET(req: NextRequest) {
     const transcript = await obj.Body?.transformToString("utf-8");
     if (!transcript) throw new Error("Empty transcript");
 
-    const prompt = `You are a study assistant. Given this lecture transcript, generate 6 multiple choice questions to test understanding.
+    const prompt = `You are a study assistant. Given this lecture transcript, generate 10 flashcards for studying.
 
-Return a JSON array of exactly 6 objects, each with:
-- "question": the question string
-- "options": array of exactly 4 answer strings
-- "correct": index (0-3) of the correct answer
-- "explanation": one sentence explaining why the answer is correct
+Return a JSON array of exactly 10 objects, each with:
+- "term": the concept, term, or question (short, max 10 words)
+- "definition": the explanation or answer (1-2 sentences)
 
 Respond ONLY with a valid JSON array, no markdown, no explanation.
 
@@ -54,12 +52,12 @@ ${transcript.slice(0, 30000)}`;
     }));
 
     const raw = JSON.parse(new TextDecoder().decode(response.body));
-    const questions = JSON.parse(raw.output.message.content[0].text);
+    const flashcards = JSON.parse(raw.output.message.content[0].text);
 
-    return NextResponse.json({ questions });
+    return NextResponse.json({ flashcards });
 
   } catch (err) {
-    console.error("Quiz error:", err);
+    console.error("Flashcards error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
