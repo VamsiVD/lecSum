@@ -30,11 +30,14 @@ for LAMBDA in "${LAMBDAS[@]}"; do
   echo "▸ Packaging: $FUNCTION_NAME"
 
   # Install dependencies into a local package dir (Lambda layer pattern)
-  if [[ -f "$SOURCE_DIR/requirements.txt" ]]; then
-    pip install -r "$SOURCE_DIR/requirements.txt" \
-      --target "$SOURCE_DIR/package" \
-      --quiet
-  fi
+  (
+    cd "$SOURCE_DIR"
+    if [[ -f "requirements.txt" ]]; then
+      pip install -r requirements.txt --target ./package --quiet
+      cd package && zip -r "$ZIP_FILE" . -x "*.pyc" "__pycache__/*" > /dev/null && cd ..
+    fi
+    zip -g "$ZIP_FILE" lambda_function.py > /dev/null
+  )
 
   # Zip: dependencies first, then handler code on top
   cd "$SOURCE_DIR"
