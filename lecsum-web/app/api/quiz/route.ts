@@ -1,0 +1,65 @@
+import { NextRequest, NextResponse } from "next/server";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+
+const bedrock = new BedrockRuntimeClient({
+  region: process.env.AWS_REGION!,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+const s3 = new S3Client({
+  region: process.env.AWS_REGION!,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+export async function GET(req: NextRequest) {
+  const key = req.nextUrl.searchParams.get("key");
+  if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 });
+
+  try {
+    const obj = await s3.send(new GetObjectCommand({
+      Bucket: process.env.S3_TRANSCRIPTS_BUCKET!,
+      Key: key,
+    }));
+    const transcript = await obj.Body?.transformToString("utf-8");
+    if (!transcript) throw new Error("Empty transcript");
+
+    const prompt = `You are a study assistant. Given this lecture transcript, generate 6 multiple choice questions to test understanding.
+
+Return a JSON array of exactly 6 objects, each with:
+- "question": the question string
+- "options": array of exactly 4 answer strings
+- "correct": index (0-3) of the correct answer
+- "explanation": one sentence explaining why the answer is correct
+
+Respond ONLY with a valid JSON array, no markdown, no explanation.
+
+Transcript:
+${transcript.slice(0, 30000)}`;
+
+    const response = await bedrock.send(new InvokeModelCommand({
+      modelId: "us.amazon.nova-pro-v1:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify({
+        messages: [{ role: "user", content: [{ text: prompt }] }],
+        inferenceConfig: { maxTokens: 2048, temperature: 0.3 },
+      }),
+    }));
+
+    const raw = JSON.parse(new TextDecoder().decode(response.body));
+    const questions = JSON.parse(raw.output.message.content[0].text);
+
+    return NextResponse.json({ questions });
+
+  } catch (err) {
+    console.error("Quiz error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
+  }
+}
