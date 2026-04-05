@@ -2,6 +2,9 @@
 # Usage: bash scripts/deploy.sh <staging|prod>
 set -euo pipefail
 
+REGION="${AWS_REGION:-us-east-2}"
+export AWS_PAGER=""
+
 ENV=${1:-staging}
 
 if [[ "$ENV" != "staging" && "$ENV" != "prod" ]]; then
@@ -27,11 +30,14 @@ for LAMBDA in "${LAMBDAS[@]}"; do
   echo "▸ Packaging: $FUNCTION_NAME"
 
   # Install dependencies into a local package dir (Lambda layer pattern)
-  if [[ -f "$SOURCE_DIR/requirements.txt" ]]; then
-    pip install -r "$SOURCE_DIR/requirements.txt" \
-      --target "$SOURCE_DIR/package" \
-      --quiet
-  fi
+  (
+    cd "$SOURCE_DIR"
+    if [[ -f "requirements.txt" ]]; then
+      pip install -r requirements.txt --target ./package --quiet
+      cd package && zip -r "$ZIP_FILE" . -x "*.pyc" "__pycache__/*" > /dev/null && cd ..
+    fi
+    zip -g "$ZIP_FILE" lambda_function.py > /dev/null
+  )
 
   # Zip: dependencies first, then handler code on top
   cd "$SOURCE_DIR"
@@ -48,25 +54,41 @@ for LAMBDA in "${LAMBDAS[@]}"; do
 
   echo "▸ Deploying: $FUNCTION_NAME"
 
+  if ! aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" --output json &>/dev/null; then
+    echo ""
+    echo "  ✗ Cannot read Lambda function: $FUNCTION_NAME (region $REGION)"
+    aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" --output json 2>&1 || true
+    echo ""
+    echo "  If you see ResourceNotFoundException, create the function in AWS first (name above,"
+    echo "  runtime Python 3.x, handler lambda_function.lambda_handler), then redeploy."
+    exit 1
+  fi
+
   aws lambda update-function-code \
     --function-name "$FUNCTION_NAME" \
     --zip-file "fileb://${ZIP_FILE}" \
-    --region us-east-2 \
+    --region "$REGION" \
     --output text \
     --query 'FunctionName' \
-    2>&1 | tail -1
+    --no-cli-pager
 
   # Wait for update to complete before moving to next Lambda
   aws lambda wait function-updated \
     --function-name "$FUNCTION_NAME" \
-    --region us-east-2
+    --region "$REGION"
 
   echo "  ✓ $FUNCTION_NAME deployed"
 
   # Tag the deployment in prod for audit trail
   if [[ "$ENV" == "prod" ]]; then
+    FN_ARN=$(aws lambda get-function \
+      --function-name "$FUNCTION_NAME" \
+      --region "$REGION" \
+      --query 'Configuration.FunctionArn' \
+      --output text)
     aws lambda tag-resource \
-      --resource "$(aws lambda get-function --function-name "$FUNCTION_NAME" --query 'Configuration.FunctionArn' --output text)" \
+      --region "$REGION" \
+      --resource "$FN_ARN" \
       --tags "git-sha=${GITHUB_SHA:-local},deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   fi
 
