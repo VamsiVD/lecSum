@@ -12,23 +12,25 @@ const s3 = new S3Client({
 });
 
 export async function POST(req: NextRequest) {
-  const { filename, contentType } = await req.json();
+  try {
+    const { filename, contentType } = await req.json();
+    if (!filename || !contentType) {
+      return NextResponse.json({ error: "Missing filename or contentType" }, { status: 400 });
+    }
 
-  if (!filename || !contentType) {
-    return NextResponse.json({ error: "Missing filename or contentType" }, { status: 400 });
+    // Generate a unique key so files never collide
+    const ext = filename.split(".").pop();
+    const key = `${randomBytes(8).toString("hex")}-${Date.now()}.${ext}`;
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.S3_UPLOAD_BUCKET!,
+      Key: key,
+      ContentType: contentType,
+    });
+
+    const url = await getSignedUrl(s3, command, { expiresIn: 300 }); // 5 min
+  } catch (err) {
+    console.error("Upload URL error:", err);
+    return NextResponse.json({ error: String(err) }, { status: 500 });
   }
-
-  // Generate a unique key so files never collide
-  const ext = filename.split(".").pop();
-  const key = `${randomBytes(8).toString("hex")}-${Date.now()}.${ext}`;
-
-  const command = new PutObjectCommand({
-    Bucket: process.env.S3_UPLOAD_BUCKET!,
-    Key: key,
-    ContentType: contentType,
-  });
-
-  const url = await getSignedUrl(s3, command, { expiresIn: 300 }); // 5 min
-
-  return NextResponse.json({ url, key });
 }
