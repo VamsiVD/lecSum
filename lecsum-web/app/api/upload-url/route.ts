@@ -29,6 +29,11 @@ export async function POST(req: NextRequest) {
     });
 
     const url = await getSignedUrl(s3, command, { expiresIn: 300 }); // 5 min
+
+    // --- THIS IS THE FIX ---
+    // Return the URL to the client so they can use it to upload the file
+    return NextResponse.json({ url, key }, { status: 200 });
+
   } catch (err) {
     console.error("Upload URL error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
