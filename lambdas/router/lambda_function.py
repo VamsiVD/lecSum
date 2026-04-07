@@ -13,7 +13,9 @@ dynamodb = boto3.resource("dynamodb")
 
 TABLE_NAME = os.environ.get("DYNAMODB_TABLE", "lecsum-jobs")
 OUTPUT_BUCKET = os.environ.get("OUTPUT_BUCKET", "lecsum-transcripts-text")
-TRANSCRIBE_OUTPUT_BUCKET = os.environ.get("TRANSCRIBE_OUTPUT_BUCKET", "lecsum-transcripts-outbox")
+TRANSCRIBE_OUTPUT_BUCKET = os.environ.get(
+    "TRANSCRIBE_OUTPUT_BUCKET", "lecsum-transcripts-outbox"
+)
 
 AUDIO_FORMATS = {"mp3", "wav", "flac", "ogg", "amr", "webm"}
 AUDIO_FORMAT_MAP = {
@@ -32,7 +34,9 @@ PPTX_FORMATS = {"pptx"}
 IMAGE_FORMATS = {"jpg", "jpeg", "png", "tiff", "tif"}
 
 
-def write_dynamo(upload_key: str, file_name: str, status: str, job_name: str = "", extra: dict = None):
+def write_dynamo(
+    upload_key: str, file_name: str, status: str, job_name: str = "", extra: dict = None
+):
     table = dynamodb.Table(TABLE_NAME)
     item = {
         "uploadKey": upload_key,
@@ -160,9 +164,7 @@ def handle_image(bucket: str, key: str, upload_key: str, file_name: str):
         Document={"S3Object": {"Bucket": bucket, "Name": key}}
     )
     lines = [
-        block["Text"]
-        for block in response["Blocks"]
-        if block["BlockType"] == "LINE"
+        block["Text"] for block in response["Blocks"] if block["BlockType"] == "LINE"
     ]
     text = "\n".join(lines)
 
