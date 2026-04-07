@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { randomBytes } from "crypto";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -11,29 +10,39 @@ const s3 = new S3Client({
   },
 });
 
+const ALLOWED_EXTENSIONS = new Set([
+  // Audio
+  "mp3", "wav", "m4a", "flac", "ogg", "webm", "amr",
+  // Documents
+  "pdf", "docx", "pptx",
+  // Images
+  "jpg", "jpeg", "png", "tiff",
+]);
+
 export async function POST(req: NextRequest) {
   try {
     const { filename, contentType } = await req.json();
-    if (!filename || !contentType) {
-      return NextResponse.json({ error: "Missing filename or contentType" }, { status: 400 });
+
+    if (!filename) {
+      return NextResponse.json({ error: "Missing filename" }, { status: 400 });
     }
 
-    // Generate a unique key so files never collide
-    const ext = filename.split(".").pop();
-    const key = `${randomBytes(8).toString("hex")}-${Date.now()}.${ext}`;
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      return NextResponse.json(
+        { error: `Unsupported file type: .${ext}` },
+        { status: 400 }
+      );
+    }
 
     const command = new PutObjectCommand({
       Bucket: process.env.S3_UPLOAD_BUCKET!,
-      Key: key,
-      ContentType: contentType,
+      Key: filename,
+      ContentType: contentType || "application/octet-stream",
     });
 
-    const url = await getSignedUrl(s3, command, { expiresIn: 300 }); // 5 min
-
-    // --- THIS IS THE FIX ---
-    // Return the URL to the client so they can use it to upload the file
-    return NextResponse.json({ url, key }, { status: 200 });
-
+    const url = await getSignedUrl(s3, command, { expiresIn: 300 });
+    return NextResponse.json({ url, key: filename });
   } catch (err) {
     console.error("Upload URL error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

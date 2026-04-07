@@ -1,102 +1,67 @@
-#!/usr/bin/env bash
-# Usage: bash scripts/deploy.sh <staging|prod>
-set -euo pipefail
-
-REGION="${AWS_REGION:-us-east-2}"
-export AWS_PAGER=""
+#!/bin/bash
+set -e
 
 ENV=${1:-staging}
+REGION=${AWS_REGION:-us-east-2}
 
-if [[ "$ENV" != "staging" && "$ENV" != "prod" ]]; then
-  echo "Error: ENV must be 'staging' or 'prod'"
-  exit 1
-fi
+echo "Deploying to environment: $ENV"
 
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Deploying to: $ENV"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+deploy_lambda() {
+  local name=$1
+  local dir="lambdas/$name"
+  local function_name="lecsum-${name//_/-}-${ENV}"
+  local tmp="/tmp/lambda-${name}-${ENV}"
 
-# Lambda names follow the pattern: lecsum-<function>-<env>
-LAMBDAS=(
-  "transcribe_trigger"
-)
+  echo "--- Deploying $function_name ---"
 
-for LAMBDA in "${LAMBDAS[@]}"; do
-  FUNCTION_NAME="lecsum-${LAMBDA//_/-}-${ENV}"
-  SOURCE_DIR="lambdas/${LAMBDA}"
-  ZIP_FILE="/tmp/${LAMBDA}.zip"
+  rm -rf "$tmp" && mkdir -p "$tmp"
 
-  echo ""
-  echo "▸ Packaging: $FUNCTION_NAME"
-
-  # Install dependencies into a local package dir (Lambda layer pattern)
-  (
-    cd "$SOURCE_DIR"
-    if [[ -f "requirements.txt" ]]; then
-      pip install -r requirements.txt --target ./package --quiet
-      cd package && zip -r "$ZIP_FILE" . -x "*.pyc" "__pycache__/*" > /dev/null && cd ..
-    fi
-    zip -g "$ZIP_FILE" lambda_function.py > /dev/null
-  )
-
-  # Zip: dependencies first, then handler code on top
-  cd "$SOURCE_DIR"
-  if [[ -d "package" ]]; then
-    cd package && zip -r "$ZIP_FILE" . -x "*.pyc" -x "__pycache__/*" > /dev/null
-    cd ..
-  else
-    zip -r "$ZIP_FILE" . -x "*.pyc" -x "__pycache__/*" > /dev/null || true
-    # create empty zip if dir was empty (zip fails on empty)
-    [[ -f "$ZIP_FILE" ]] || zip "$ZIP_FILE" lambda_function.py > /dev/null
+  # Install dependencies if requirements.txt exists
+  if [ -f "$dir/requirements.txt" ]; then
+    echo "Installing dependencies for $name..."
+    pip install -r "$dir/requirements.txt" -t "$tmp" --quiet
   fi
-  zip -g "$ZIP_FILE" lambda_function.py > /dev/null
+
+  # Copy Lambda handler on top
+  cp "$dir/lambda_function.py" "$tmp/"
+
+  # Zip it up
+  cd "$tmp"
+  zip -r "/tmp/${name}-${ENV}.zip" . --quiet
   cd - > /dev/null
 
-  echo "▸ Deploying: $FUNCTION_NAME"
-
-  if ! aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" --output json &>/dev/null; then
-    echo ""
-    echo "  ✗ Cannot read Lambda function: $FUNCTION_NAME (region $REGION)"
-    aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" --output json 2>&1 || true
-    echo ""
-    echo "  If you see ResourceNotFoundException, create the function in AWS first (name above,"
-    echo "  runtime Python 3.x, handler lambda_function.lambda_handler), then redeploy."
-    exit 1
-  fi
-
+  # Deploy
   aws lambda update-function-code \
-    --function-name "$FUNCTION_NAME" \
-    --zip-file "fileb://${ZIP_FILE}" \
+    --function-name "$function_name" \
+    --zip-file "fileb:///tmp/${name}-${ENV}.zip" \
     --region "$REGION" \
-    --output text \
-    --query 'FunctionName' \
-    --no-cli-pager
+    --output text > /dev/null
 
-  # Wait for update to complete before moving to next Lambda
+  # Wait for update to complete
   aws lambda wait function-updated \
-    --function-name "$FUNCTION_NAME" \
+    --function-name "$function_name" \
     --region "$REGION"
 
-  echo "  ✓ $FUNCTION_NAME deployed"
+  # Tag with git SHA
+  local sha
+  sha=$(git rev-parse --short HEAD)
+  aws lambda tag-resource \
+    --resource "arn:aws:lambda:${REGION}:$(aws sts get-caller-identity --query Account --output text):function:${function_name}" \
+    --tags "GitSHA=${sha},Environment=${ENV}" \
+    --region "$REGION" 2>/dev/null || true
 
-  # Tag the deployment in prod for audit trail
-  if [[ "$ENV" == "prod" ]]; then
-    FN_ARN=$(aws lambda get-function \
-      --function-name "$FUNCTION_NAME" \
-      --region "$REGION" \
-      --query 'Configuration.FunctionArn' \
-      --output text)
-    aws lambda tag-resource \
-      --region "$REGION" \
-      --resource "$FN_ARN" \
-      --tags "git-sha=${GITHUB_SHA:-local},deployed-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  fi
+  echo "✅ $function_name deployed"
+}
 
-  # Clean up temp package dir
-  rm -rf "$SOURCE_DIR/package"
+LAMBDAS=(
+  "transcribe_trigger"
+  "transcript_parser"
+  "router"
+)
+
+for lambda in "${LAMBDAS[@]}"; do
+  deploy_lambda "$lambda"
 done
 
 echo ""
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Deploy to $ENV complete"
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✅ All Lambdas deployed to $ENV"
