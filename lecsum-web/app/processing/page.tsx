@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 const AUDIO_FORMATS = new Set(["mp3", "wav", "m4a", "flac", "ogg", "webm", "amr"]);
@@ -38,7 +39,7 @@ function StepRow({ label, state }: { label: string; state: "waiting" | "active" 
   );
 }
 
-export default function ProcessingPage() {
+  function ProcessingContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const uploadKey = searchParams.get("key") ?? "";
@@ -147,5 +148,16 @@ export default function ProcessingPage() {
         )}
       </div>
     </div>
+  );
+}
+export default function ProcessingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    }>
+      <ProcessingContent />
+    </Suspense>
   );
 }
