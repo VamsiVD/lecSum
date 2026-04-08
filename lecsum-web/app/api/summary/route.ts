@@ -58,7 +58,10 @@ ${transcript.slice(0, 30000)}`;
 
     const raw = JSON.parse(new TextDecoder().decode(response.body));
     console.log("Raw Bedrock response:", JSON.stringify(raw, null, 2));
-    const summary = JSON.parse(raw.output.message.content[0].text);
+    const text = raw.output.message.content[0].text;
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}") + 1;
+    const summary = JSON.parse(text.slice(jsonStart, jsonEnd));
 
     return NextResponse.json(summary);
 
