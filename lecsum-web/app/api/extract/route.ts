@@ -35,7 +35,7 @@ const bedrock = new BedrockRuntimeClient({
 });
 
 // Claude 3.5 Haiku on Bedrock — best quality/cost for document extraction
-const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001";
+const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
 const EXTRACT_PROMPT = `You are extracting content from a document page for a student study assistant.
 
