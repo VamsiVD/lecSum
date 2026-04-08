@@ -111,10 +111,9 @@ function UploadZone({ onUpload }: { onUpload: (file: File, course: string) => vo
           </svg>
         </div>
         <div className="text-center">
-          <p className="text-sm font-medium text-gray-700">Drop audio here</p>
-          <p className="text-xs text-gray-400 mt-0.5">MP3, WAV, M4A, FLAC</p>
+          <p className="text-sm font-medium text-gray-700">Drop files here</p>
         </div>
-        <input type="file" accept=".mp3,.wav,.m4a,.flac" className="hidden" onChange={handleFile} />
+        <input type="file" className="hidden" onChange={handleFile} />
       </label>
     </div>
   );
@@ -221,8 +220,8 @@ function StatsBar({ jobs }: { jobs: Job[] }) {
 
 function LectureCard({ job, courses, onClick }: { job: Job; courses: Course[]; onClick: () => void }) {
   const course = courses.find(c => c.id === job.course);
-  const name = job.fileName?.replace(/\.[^.]+$/, "") ?? job.uploadKey;
-
+  const rawName = job.fileName ?? job.uploadKey;
+  const name = rawName.replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "");
   return (
     <div
       onClick={job.status === "done" ? onClick : undefined}
