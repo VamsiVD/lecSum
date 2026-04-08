@@ -53,8 +53,8 @@ ${transcript.slice(0, 30000)}`;
 
     const raw = JSON.parse(new TextDecoder().decode(response.body));
     const text = raw.output.message.content[0].text;
-    const jsonStart = text.indexOf("{");
-    const jsonEnd = text.lastIndexOf("}") + 1;
+    const jsonStart = text.indexOf("[");
+    const jsonEnd = text.lastIndexOf("]") + 1;
     const flashcards = JSON.parse(text.slice(jsonStart, jsonEnd));
 
     return NextResponse.json({ flashcards });
