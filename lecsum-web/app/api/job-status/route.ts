@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 
 const dynamo = new DynamoDBClient({
   region: process.env.AWS_REGION!,
@@ -13,7 +13,15 @@ export async function GET(req: NextRequest) {
   try {
     const uploadKey = req.nextUrl.searchParams.get("uploadKey");
     if (!uploadKey) return NextResponse.json({ error: "Missing uploadKey" }, { status: 400 });
-
+    const course = req.nextUrl.searchParams.get("course"); // ← read from query
+    if (course) {
+      await dynamo.send(new UpdateItemCommand({
+        TableName: "lecsum-jobs",
+        Key: { uploadKey: { S: uploadKey! } },
+        UpdateExpression: "SET course = :c",
+        ExpressionAttributeValues: { ":c": { S: course } },
+      })).catch(() => { }); // non-blocking
+    }
     const result = await dynamo.send(new GetItemCommand({
       TableName: "lecsum-jobs",
       Key: { uploadKey: { S: uploadKey } },
