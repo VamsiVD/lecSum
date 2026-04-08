@@ -220,8 +220,8 @@ function StatsBar({ jobs }: { jobs: Job[] }) {
 
 function LectureCard({ job, courses, onClick }: { job: Job; courses: Course[]; onClick: () => void }) {
   const course = courses.find(c => c.id === job.course);
-  const name = job.fileName?.replace(/\.[^.]+$/, "") ?? job.uploadKey;
-
+  const rawName = job.fileName ?? job.uploadKey;
+  const name = rawName.replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "");
   return (
     <div
       onClick={job.status === "done" ? onClick : undefined}
