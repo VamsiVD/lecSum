@@ -49,6 +49,8 @@ function StepRow({ label, state }: { label: string; state: "waiting" | "active" 
   const [errorMsg, setErrorMsg] = useState("");
   const extractCalled = useRef(false);
 
+  const course = searchParams.get("course") ?? "";
+
   // For documents: call /api/extract then poll for done
   // For audio: just poll DynamoDB (Transcribe handles it async)
   useEffect(() => {
@@ -83,7 +85,7 @@ function StepRow({ label, state }: { label: string; state: "waiting" | "active" 
       setStep("extracting");
       const poll = async () => {
         try {
-          const res = await fetch(`/api/job-status?uploadKey=${encodeURIComponent(uploadKey)}`);
+          const res = await fetch(`/api/job-status?uploadKey=${encodeURIComponent(uploadKey)}&course=${encodeURIComponent(course ?? "")}`);
           const data = await res.json();
           if (data.status === "done") {
             setStep("done");
