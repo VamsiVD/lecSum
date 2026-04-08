@@ -1,126 +1,151 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
-type Status = "pending" | "transcribing" | "done" | "error";
+const AUDIO_FORMATS = new Set(["mp3", "wav", "m4a", "flac", "ogg", "webm", "amr"]);
+const DOC_FORMATS = new Set(["pdf", "jpg", "jpeg", "png", "tiff", "tif"]);
 
-function ProcessingContent() {
-  const params = useSearchParams();
-  const router = useRouter();
-  const uploadKey = params.get("key") ?? "";
+function getFileType(key: string): "audio" | "document" | "unknown" {
+  const ext = key.split(".").pop()?.toLowerCase() ?? "";
+  if (AUDIO_FORMATS.has(ext)) return "audio";
+  if (DOC_FORMATS.has(ext)) return "document";
+  return "unknown";
+}
 
-  const [status, setStatus] = useState<Status>("pending");
-  const [elapsed, setElapsed] = useState(0);
-  const [transcriptKey, setTranscriptKey] = useState("");
-  const [fileName, setFileName] = useState("");
-
-  useEffect(() => {
-    const t = setInterval(() => setElapsed((e) => e + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    if (!uploadKey) return;
-    if (status === "done" || status === "error") return;
-
-    const poll = async () => {
-      try {
-        const res = await fetch(
-          `/api/job-status?uploadKey=${encodeURIComponent(uploadKey)}`
-        );
-        if (!res.ok) return;
-        const data = await res.json();
-
-        setStatus(data.status ?? "pending");
-        if (data.transcriptKey) setTranscriptKey(data.transcriptKey);
-        if (data.fileName) setFileName(data.fileName);
-      } catch {
-        // network blip — keep polling
-      }
-    };
-
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => clearInterval(interval);
-  }, [uploadKey, status]);
-
-  useEffect(() => {
-    if (status === "done" && transcriptKey) {
-      setTimeout(() => {
-        router.push(`/study?key=${encodeURIComponent(transcriptKey)}`);
-      }, 1200);
-    }
-  }, [status, transcriptKey, router]);
-
-  const steps = [
-    { id: "upload",     label: "Uploaded to S3",       active: false,                                          done: true },
-    { id: "transcribe", label: "Transcribing audio",    active: status === "transcribing" || status === "pending", done: status === "done" },
-    { id: "parse",      label: "Extracting transcript", active: false,                                          done: status === "done" },
-    { id: "ready",      label: "Ready to study",        active: false,                                          done: status === "done" },
-  ];
-
+function Spinner() {
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-            {status === "done" ? "Ready to study" : "Processing your lecture"}
-          </h1>
-          <p className="text-sm text-zinc-400 mt-0.5">
-            {fileName || uploadKey} · {elapsed}s
-          </p>
-        </div>
+    <div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+  );
+}
 
-        <div className="space-y-3 mb-6">
-          {steps.map((step) => (
-            <div key={step.id} className="flex items-center gap-3">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${step.done ? "bg-green-100 dark:bg-green-900/30" : step.active ? "bg-violet-100 dark:bg-violet-900/30" : "bg-zinc-100 dark:bg-zinc-800"}`}>
-                {step.done && (
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                    <path d="M2 5l2.5 2.5L8 3" stroke="#16a34a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                )}
-                {step.active && !step.done && <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />}
-                {!step.done && !step.active && <div className="w-2 h-2 rounded-full bg-zinc-300 dark:bg-zinc-600" />}
-              </div>
-              <span className={`text-sm ${step.done ? "text-zinc-700 dark:text-zinc-300" : step.active ? "text-zinc-900 dark:text-zinc-100 font-weight-medium" : "text-zinc-400 dark:text-zinc-500"}`}>
-                {step.label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="h-1 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mb-6">
-          <div className="h-full bg-violet-500 rounded-full transition-all duration-700" style={{ width: status === "done" ? "100%" : status === "transcribing" ? "50%" : "15%" }} />
-        </div>
-
-        {status === "error" && (
-          <div className="rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 px-4 py-3 text-sm text-red-600 dark:text-red-400 mb-4">
-            Something went wrong. <a href="/" className="underline">Try again</a>
-          </div>
-        )}
-
-        {status === "done" && transcriptKey && (
-          <a href={`/study?key=${encodeURIComponent(transcriptKey)}`} className="flex items-center justify-center w-full h-10 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors">
-            View transcript
-          </a>
-        )}
-
-        {status !== "done" && status !== "error" && (
-          <p className="text-xs text-zinc-400 text-center">
-            Transcription takes 1–3 minutes. You can close this tab and come back.
-          </p>
-        )}
+function StepRow({ label, state }: { label: string; state: "waiting" | "active" | "done" | "error" }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="w-6 flex justify-center">
+        {state === "done" && <span className="text-emerald-500 text-sm">✓</span>}
+        {state === "active" && <Spinner />}
+        {state === "waiting" && <span className="w-2 h-2 rounded-full bg-gray-200 mx-auto block" />}
+        {state === "error" && <span className="text-red-500 text-sm">✕</span>}
       </div>
+      <span className={`text-sm ${
+        state === "done" ? "text-gray-500 line-through" :
+        state === "active" ? "text-gray-900 font-medium" :
+        state === "error" ? "text-red-600" :
+        "text-gray-400"
+      }`}>{label}</span>
     </div>
   );
 }
 
 export default function ProcessingPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const uploadKey = searchParams.get("key") ?? "";
+  const fileType = getFileType(uploadKey);
+
+  const [step, setStep] = useState<"uploading" | "extracting" | "done" | "error">("uploading");
+  const [errorMsg, setErrorMsg] = useState("");
+  const extractCalled = useRef(false);
+
+  // For documents: call /api/extract then poll for done
+  // For audio: just poll DynamoDB (Transcribe handles it async)
+  useEffect(() => {
+    if (!uploadKey) return;
+
+    if (fileType === "document" && !extractCalled.current) {
+      extractCalled.current = true;
+      setStep("extracting");
+
+      fetch("/api/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uploadKey }),
+      })
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error ?? "Extraction failed");
+          setStep("done");
+          setTimeout(() => {
+            router.push(`/study?key=${encodeURIComponent(data.transcriptKey)}`);
+          }, 1000);
+        })
+        .catch((err) => {
+          setStep("error");
+          setErrorMsg(err.message);
+        });
+
+      return;
+    }
+
+    if (fileType === "audio") {
+      setStep("extracting");
+      const poll = async () => {
+        try {
+          const res = await fetch(`/api/job-status?uploadKey=${encodeURIComponent(uploadKey)}`);
+          const data = await res.json();
+          if (data.status === "done") {
+            setStep("done");
+            setTimeout(() => {
+              router.push(`/study?key=${encodeURIComponent(data.transcriptKey)}`);
+            }, 1000);
+          } else if (data.status === "error") {
+            setStep("error");
+            setErrorMsg("Transcription failed. Please try again.");
+          }
+        } catch {
+          // keep polling
+        }
+      };
+
+      poll();
+      const interval = setInterval(poll, 4000);
+      return () => clearInterval(interval);
+    }
+  }, [uploadKey, fileType, router]);
+
+  const audioSteps = [
+    { label: "Uploading to S3", state: step === "uploading" ? "active" : "done" },
+    { label: "Transcribing audio", state: step === "uploading" ? "waiting" : step === "extracting" ? "active" : step === "done" ? "done" : "error" },
+    { label: "Ready to study", state: step === "done" ? "done" : "waiting" },
+  ];
+
+  const docSteps = [
+    { label: "Uploading to S3", state: step === "uploading" ? "active" : "done" },
+    { label: "Extracting content with Claude vision", state: step === "uploading" ? "waiting" : step === "extracting" ? "active" : step === "done" ? "done" : "error" },
+    { label: "Ready to study", state: step === "done" ? "done" : "waiting" },
+  ];
+
+  const steps = fileType === "audio" ? audioSteps : docSteps;
+
   return (
-    <Suspense>
-      <ProcessingContent />
-    </Suspense>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 w-full max-w-sm">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold text-gray-900">Processing your file</h1>
+          <p className="text-sm text-gray-500 mt-1 truncate">{uploadKey.split("-").slice(2).join("-")}</p>
+        </div>
+
+        <div className="space-y-4 mb-6">
+          {steps.map((s) => (
+            <StepRow key={s.label} label={s.label} state={s.state as "waiting" | "active" | "done" | "error"} />
+          ))}
+        </div>
+
+        {step === "error" && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+            {errorMsg || "Something went wrong."}
+          </div>
+        )}
+
+        {step === "extracting" && fileType === "audio" && (
+          <p className="text-xs text-gray-400 text-center">Audio transcription takes 1–3 minutes</p>
+        )}
+
+        {step === "extracting" && fileType === "document" && (
+          <p className="text-xs text-gray-400 text-center">Vision extraction usually takes 10–30 seconds</p>
+        )}
+      </div>
+    </div>
   );
 }
