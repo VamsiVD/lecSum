@@ -870,7 +870,7 @@ export default function DashboardPage() {
       )}
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
         .glass-card {
           background: ${isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)"};
           border: 1px solid ${isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)"};
