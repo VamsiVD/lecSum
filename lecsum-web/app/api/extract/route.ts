@@ -39,14 +39,18 @@ const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
 const EXTRACT_PROMPT = `You are extracting content from a document page for a student study assistant.
 
-Extract ALL of the following:
-1. Every word of text, preserving headings and structure
-2. Describe any diagrams, charts, graphs, or figures in detail — explain what they show, axis labels, trends, key values
-3. Describe any tables — include all cell values
-4. Note any mathematical equations or formulas
+Extract the educational content following these rules:
+1. Extract the text, preserving headings and structure.
+2. Describe any diagrams, charts, graphs, or figures in detail — explain what they show, axis labels, trends, key values.
+3. Describe any tables — include all cell values.
+4. Note any mathematical equations or formulas.
+
+CRITICAL SAFETY INSTRUCTIONS:
+- If you encounter Personally Identifiable Information (PII) such as email addresses, phone numbers, or physical addresses, DO NOT extract them. Replace them with [REDACTED PII].
+- If you encounter profanity, crude slang, or potentially toxic words (even within examples, memes, or quotes), DO NOT extract them. Replace them with [REDACTED SLANG].
 
 Format your response as plain text. For diagrams write [DIAGRAM: description]. For tables write [TABLE: description].
-Be thorough — a student should be able to study from your output alone without seeing the original.`;
+Be thorough — a student should be able to study from your educational output alone without seeing the original.`;
 
 const IMAGE_MIME: Record<string, "image/jpeg" | "image/png" | "image/gif" | "image/webp"> = {
   jpg: "image/jpeg",

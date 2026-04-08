@@ -113,7 +113,7 @@ function UploadZone({ onUpload }: { onUpload: (file: File, course: string) => vo
         <div className="text-center">
           <p className="text-sm font-medium text-gray-700">Drop files here</p>
         </div>
-        <input type="file" accept=".mp3,.wav,.m4a,.flac" className="hidden" onChange={handleFile} />
+        <input type="file" className="hidden" onChange={handleFile} />
       </label>
     </div>
   );
