@@ -13,25 +13,49 @@ const dynamo = new DynamoDBClient({
   },
 });
 
-// PATCH /api/lectures/[uploadKey] — update course assignment
+// PATCH /api/lectures/[uploadKey] — update course assignment or rename
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ uploadKey: string }> }
 ) {
   const { uploadKey } = await params;
   const key = decodeURIComponent(uploadKey);
-  const { course } = await req.json();
+  const { course, displayName } = await req.json();
+
+  // Arrays/Objects to dynamically build our DynamoDB update query
+  const updateParts: string[] = [];
+  const ExpressionAttributeNames: Record<string, string> = {};
+  const ExpressionAttributeValues: Record<string, { S: string }> = {};
+
+  if (course !== undefined) {
+    updateParts.push("#c = :c");
+    ExpressionAttributeNames["#c"] = "course";
+    ExpressionAttributeValues[":c"] = { S: course };
+  }
+
+  if (displayName !== undefined) {
+    updateParts.push("#dn = :dn");
+    ExpressionAttributeNames["#dn"] = "displayName";
+    ExpressionAttributeValues[":dn"] = { S: displayName };
+  }
+
+  // If nothing was passed to update, just return early
+  if (updateParts.length === 0) {
+    return NextResponse.json({ success: true, note: "No fields to update" });
+  }
 
   try {
     await dynamo.send(
       new UpdateItemCommand({
         TableName: "lecsum-jobs",
         Key: { uploadKey: { S: key } },
-        UpdateExpression: "SET course = :c",
-        ExpressionAttributeValues: { ":c": { S: course ?? "" } },
+        UpdateExpression: "SET " + updateParts.join(", "),
+        ExpressionAttributeNames,
+        ExpressionAttributeValues,
       })
     );
     return NextResponse.json({ success: true });
+
   } catch (err) {
     console.error("Update error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });

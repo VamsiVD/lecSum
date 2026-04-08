@@ -16,11 +16,15 @@ export async function GET() {
     );
 
     const lectures = (result.Items ?? [])
+      // 1. Filter out the global courses record so it doesn't show up in the UI
+      .filter((item) => item.uploadKey?.S !== "courses")
       .map((item) => ({
         uploadKey: item.uploadKey?.S ?? "",
         jobName: item.jobName?.S,
         transcriptKey: item.transcriptKey?.S,
         fileName: item.fileName?.S,
+        // 2. Added displayName so your frontend gets the renamed values!
+        displayName: item.displayName?.S,
         status: item.status?.S ?? "pending",
         createdAt: item.createdAt?.S,
         course: item.course?.S,
