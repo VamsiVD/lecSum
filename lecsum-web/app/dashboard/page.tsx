@@ -48,7 +48,7 @@ function courseGradient(hex: string): string {
 }
 
 function timeAgo(iso?: string): string {
-  if (!iso) return "Unknown";
+  if (!iso) return ""; // <-- Change here
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   const hours = Math.floor(diff / 3600000);
@@ -64,8 +64,8 @@ function cleanName(raw: string) {
 }
 
 // ── Inline rename ─────────────────────────────────────────────────────────
-function RenameInput({ value, onSave, onCancel, className = "" }: {
-  value: string; onSave: (v: string) => void; onCancel: () => void; className?: string;
+function RenameInput({ value, onSave, onCancel, className = "", isDark = true }: {
+  value: string; onSave: (v: string) => void; onCancel: () => void; className?: string; isDark?: boolean;
 }) {
   const [val, setVal] = useState(value);
   const ref = useRef<HTMLInputElement>(null);
@@ -80,11 +80,10 @@ function RenameInput({ value, onSave, onCancel, className = "" }: {
       }}
       onBlur={() => onSave(val.trim() || value)}
       onClick={e => e.stopPropagation()}
-      className={`bg-transparent border-b border-white/40 outline-none text-white placeholder-white/40 ${className}`}
+      className={`bg-transparent border-b outline-none ${isDark ? "text-white border-white/40 placeholder-white/40" : "text-gray-900 border-black/30 placeholder-gray-400"} ${className}`}
     />
   );
 }
-
 // ── Bubble panel ──────────────────────────────────────────────────────────
 function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLecture }: {
   course: Course | null;
@@ -242,7 +241,7 @@ function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLec
 }
 
 // ── Course card ───────────────────────────────────────────────────────────
-function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs }: {
+function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs, onDropLecture, isDark }: {
   course: Course;
   isOpen: boolean;
   cardRef: (el: HTMLDivElement | null) => void;
@@ -250,8 +249,11 @@ function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs
   onRename: (id: string, name: string) => void;
   onRemove: (id: string) => void;
   jobs: Job[];
+  onDropLecture: (courseId: string) => void;
+  isDark: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const lectures = jobs.filter(j => j.course === course.id);
   const ready = lectures.filter(j => j.status === "done").length;
 
@@ -259,17 +261,33 @@ function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs
     <div
       ref={cardRef}
       onClick={onClick}
+      onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={e => { e.preventDefault(); setIsDragOver(false); onDropLecture(course.id); }}
       className="relative rounded-2xl overflow-hidden border cursor-pointer select-none group"
       style={{
         height: 152,
-        borderColor: isOpen ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.1)",
-        transform: isOpen ? "translateY(-4px) scale(1.015)" : "translateY(0) scale(1)",
-        boxShadow: isOpen ? "0 20px 50px rgba(0,0,0,.55)" : "none",
+        borderColor: isDragOver ? course.color : (isOpen ? (isDark ? "rgba(255,255,255,0.32)" : "rgba(0,0,0,0.2)") : (isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)")),
+        transform: isDragOver ? "translateY(-4px) scale(1.02)" : (isOpen ? "translateY(-4px) scale(1.015)" : "translateY(0) scale(1)"),
+        boxShadow: isDragOver ? `0 0 20px ${course.color}40` : (isOpen ? (isDark ? "0 20px 50px rgba(0,0,0,.55)" : "0 20px 50px rgba(0,0,0,.15)") : "none"),
         transition: "border-color .3s, transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .3s",
+        background: isDark ? "transparent" : "#ffffff", // solid base for light mode
       }}
     >
-      <div className="absolute inset-0" style={{ background: courseGradient(course.color) }} />
-      <div className="absolute inset-0" style={{ background: isOpen ? "rgba(255,255,255,0.05)" : "linear-gradient(160deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.62) 100%)", transition: "background .3s" }} />
+      {/* Base Color Background */}
+      <div className="absolute inset-0" style={{
+        background: isDark
+          ? courseGradient(course.color)
+          : `linear-gradient(135deg, ${course.color}33 0%, ${course.color}05 100%)`
+      }} />
+
+      {/* Shadow Overlay */}
+      <div className="absolute inset-0" style={{
+        background: isOpen
+          ? (isDark ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.4)")
+          : (isDark ? "linear-gradient(160deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.62) 100%)" : "linear-gradient(160deg,rgba(255,255,255,0) 0%,rgba(0,0,0,.04) 100%)"),
+        transition: "background .3s"
+      }} />
 
       <div className="absolute inset-0 p-3.5 flex flex-col justify-between z-10">
         <div className="flex items-center justify-between">
@@ -286,24 +304,25 @@ function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs
             {renaming ? (
               <RenameInput
                 value={course.name}
+                isDark={isDark}
                 onSave={v => { onRename(course.id, v); setRenaming(false); }}
                 onCancel={() => setRenaming(false)}
                 className="text-xs font-mono w-24"
               />
             ) : (
               <span
-                className="text-[10px] font-mono text-white/75 tracking-wider hover:text-white transition-colors"
+                className={`text-[10px] font-mono tracking-wider transition-colors ${isDark ? "text-white/75 hover:text-white" : "text-gray-600 hover:text-gray-900"}`}
                 onDoubleClick={e => { e.stopPropagation(); setRenaming(true); }}
               >{course.name}</span>
             )}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] font-mono text-white/40 bg-black/25 px-1.5 py-0.5 rounded backdrop-blur-sm">
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded backdrop-blur-sm ${isDark ? "text-white/40 bg-black/25" : "text-gray-600 bg-black/5"}`}>
               {lectures.length} lec
             </span>
             <button
               onClick={e => { e.stopPropagation(); onRemove(course.id); }}
-              className="opacity-0 group-hover:opacity-100 text-white/35 hover:text-white/80 text-xs transition-opacity"
+              className={`opacity-0 group-hover:opacity-100 text-xs transition-opacity ${isDark ? "text-white/35 hover:text-white/80" : "text-gray-400 hover:text-gray-700"}`}
             >✕</button>
           </div>
         </div>
@@ -315,7 +334,7 @@ function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs
             transition: "transform .35s cubic-bezier(.34,1.56,.64,1)",
           }}
         >
-          <p className="text-white text-lg leading-tight" style={{ fontFamily: "'DM Serif Display', serif", letterSpacing: "-0.2px", textShadow: "0 1px 10px rgba(0,0,0,0.6)" }}>
+          <p className={`text-lg leading-tight ${isDark ? "text-white" : "text-gray-900"}`} style={{ fontFamily: "'DM Serif Display', serif", letterSpacing: "-0.2px", textShadow: isDark ? "0 1px 10px rgba(0,0,0,0.6)" : "none" }}>
             {course.name}
           </p>
         </div>
@@ -323,10 +342,10 @@ function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs
         <div className="flex items-center justify-between">
           <div className="flex gap-1">
             {["Summary", "Quiz", "Cards"].map(t => (
-              <span key={t} className="text-white/45 text-[8px] font-medium uppercase tracking-wider bg-white/10 border border-white/13 px-1.5 py-0.5 rounded">{t}</span>
+              <span key={t} className={`text-[8px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded border ${isDark ? "text-white/45 bg-white/10 border-white/13" : "text-gray-500 bg-black/5 border-black/5"}`}>{t}</span>
             ))}
           </div>
-          <span className="text-[9px] text-white/35">{ready}/{lectures.length} ready</span>
+          <span className={`text-[9px] ${isDark ? "text-white/35" : "text-gray-500"}`}>{ready}/{lectures.length} ready</span>
         </div>
       </div>
     </div>
@@ -473,16 +492,34 @@ export default function DashboardPage() {
   const mainRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem("lecsum-courses");
-    if (saved) setCourses(JSON.parse(saved));
-    const theme = localStorage.getItem("lecsum-theme");
-    if (theme) setIsDark(theme === "dark");
+  // fetch courses from DynamoDB on mount
+  const fetchCourses = useCallback(async () => {
+    try {
+      const res = await fetch("/api/courses");
+      if (!res.ok) return;
+      const data = await res.json();
+      setCourses(data.courses ?? []);
+    } catch { }
   }, []);
 
-  const saveCourses = (updated: Course[]) => {
-    setCourses(updated);
-    localStorage.setItem("lecsum-courses", JSON.stringify(updated));
+  useEffect(() => {
+    fetchCourses();
+    // keep theme in localStorage — that's fine
+    const theme = localStorage.getItem("lecsum-theme");
+    if (theme) setIsDark(theme === "dark");
+  }, [fetchCourses]);
+
+  const saveCourses = async (updated: Course[]) => {
+    setCourses(updated); // optimistic
+    try {
+      await fetch("/api/courses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courses: updated }),
+      });
+    } catch {
+      fetchCourses(); // revert on failure
+    }
   };
 
   const fetchJobs = useCallback(async () => {
@@ -565,10 +602,10 @@ export default function DashboardPage() {
   };
 
   // ── Course actions ──
-  const renameCourse = (id: string, name: string) => {
-    saveCourses(courses.map(c => c.id === id ? { ...c, name } : c));
+  const renameCourse = async (id: string, name: string) => {
+    await saveCourses(courses.map(c => c.id === id ? { ...c, name } : c));
   };
-  const addCourse = () => {
+  const addCourse = async () => {
     if (!newCourseName.trim()) return;
     const course: Course = {
       id: Date.now().toString(),
@@ -576,10 +613,12 @@ export default function DashboardPage() {
       color: COURSE_COLORS[courses.length % COURSE_COLORS.length],
       lectureCount: 0,
     };
-    saveCourses([...courses, course]);
+    await saveCourses([...courses, course]);
     setNewCourseName(""); setAddingCourse(false);
   };
-  const removeCourse = (id: string) => saveCourses(courses.filter(c => c.id !== id));
+  const removeCourse = async (id: string) => {
+    await saveCourses(courses.filter(c => c.id !== id));
+  };
 
   // ── Lecture actions ──
   const renameLecture = async (uploadKey: string, displayName: string) => {
@@ -748,18 +787,20 @@ export default function DashboardPage() {
             <>
               <div className={`text-[9px] uppercase tracking-widest mb-2 ${T.textFaint}`}>Courses</div>
               <div className="grid grid-cols-3 gap-3 mb-4">
-                {enrichedCourses.map(c => (
-                  <CourseCard
-                    key={c.id}
-                    course={c}
-                    isOpen={openCourseId === c.id}
-                    cardRef={el => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }}
-                    onClick={e => openBubble(c.id, e)}
-                    onRename={renameCourse}
-                    onRemove={removeCourse}
-                    jobs={jobs}
-                  />
-                ))}
+              {enrichedCourses.map(c => (
+                <CourseCard
+                  key={c.id}
+                  course={c}
+                  isOpen={openCourseId === c.id}
+                  cardRef={el => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }}
+                  onClick={e => openBubble(c.id, e)}
+                  onRename={renameCourse}
+                  onRemove={removeCourse}
+                  jobs={jobs}
+                  onDropLecture={handleDropOnCourse} // <-- Pass the function here!
+                  isDark={isDark}
+                />
+              ))}
               </div>
             </>
           )}
@@ -804,11 +845,22 @@ export default function DashboardPage() {
         <div className={`w-64 flex-shrink-0 border-l backdrop-blur-2xl flex flex-col gap-3 p-4 ${T.sidebar}`} onClick={e => e.stopPropagation()}>
           <div className={`rounded-2xl border p-4 ${T.surface}`}>
             <div className={`text-[9px] uppercase tracking-widest mb-3 ${T.textFaint}`}>New Lecture</div>
-            <select key={courses.map(c => c.id).join(",")} value={selectedCourse} onChange={e => setSelectedCourse(e.target.value)}
-              className={`w-full text-xs border rounded-lg px-2 py-1.5 mb-3 outline-none backdrop-blur-sm ${T.input}`}>
-              <option value="">No course</option>
-              {enrichedCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+              <select 
+                key={courses.map(c => c.id).join(",")} 
+                value={selectedCourse} 
+                onChange={e => setSelectedCourse(e.target.value)}
+                className={`w-full text-xs border rounded-lg px-2 py-1.5 mb-3 outline-none backdrop-blur-sm ${T.input}`}
+                style={{ colorScheme: isDark ? 'dark' : 'light' }} // Tells the OS to use the dark scrollbar/UI
+              >
+                <option value="" className={isDark ? "bg-[#0d1512] text-white" : "bg-white text-gray-900"}>
+                  No course
+                </option>
+                {enrichedCourses.map(c => (
+                  <option key={c.id} value={c.id} className={isDark ? "bg-[#0d1512] text-white" : "bg-white text-gray-900"}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             <label
               onDragOver={e => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setDraggingFile(true); }}
               onDragLeave={() => setDraggingFile(false)}
