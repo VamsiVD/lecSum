@@ -8,6 +8,7 @@ interface Job {
   jobName?: string;
   transcriptKey?: string;
   fileName?: string;
+  displayName?: string;
   status: string;
   createdAt?: string;
   course?: string;
@@ -20,10 +21,31 @@ interface Course {
   lectureCount: number;
 }
 
+interface BubblePos {
+  top: number;
+  left: number;
+  arrowSide: "left" | "right";
+  transformOrigin: string;
+}
+
 const COURSE_COLORS = [
-  "#2563eb", "#16a34a", "#9333ea", "#ea580c",
-  "#0891b2", "#be123c", "#854d0e", "#1d4ed8",
+  "#4ade80", "#60a5fa", "#fbbf24", "#f87171",
+  "#a78bfa", "#34d399", "#fb923c", "#e879f9",
 ];
+
+function courseGradient(hex: string): string {
+  const map: Record<string, string> = {
+    "#4ade80": "linear-gradient(135deg,#041a0e 0%,#073d1c 30%,#0f6635 55%,#1a9448 75%,#4ade8044 100%)",
+    "#60a5fa": "linear-gradient(135deg,#020b1a 0%,#041a38 30%,#082d60 55%,#1050a0 75%,#60a5fa44 100%)",
+    "#fbbf24": "linear-gradient(135deg,#130900 0%,#2e1500 30%,#4f2500 55%,#7a3c00 75%,#fbbf2444 100%)",
+    "#f87171": "linear-gradient(135deg,#1a0404 0%,#3d0a0a 30%,#6b1111 55%,#991c1c 75%,#f8717144 100%)",
+    "#a78bfa": "linear-gradient(135deg,#0d0520 0%,#1e0d42 30%,#33166e 55%,#4c1fa0 75%,#a78bfa44 100%)",
+    "#34d399": "linear-gradient(135deg,#021810 0%,#053826 30%,#0a5c3e 55%,#108057 75%,#34d39944 100%)",
+    "#fb923c": "linear-gradient(135deg,#160500 0%,#311000 30%,#541c00 55%,#7c2900 75%,#fb923c44 100%)",
+    "#e879f9": "linear-gradient(135deg,#1a0520 0%,#3d0a48 30%,#6b117a 55%,#9918a8 75%,#e879f944 100%)",
+  };
+  return map[hex] ?? `linear-gradient(135deg,#111 0%,#222 50%,${hex}44 100%)`;
+}
 
 function timeAgo(iso?: string): string {
   if (!iso) return "Unknown";
@@ -37,78 +59,344 @@ function timeAgo(iso?: string): string {
   return `${days}d ago`;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    done: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-    transcribing: "bg-blue-50 text-blue-700 border border-blue-200",
-    extracting: "bg-blue-50 text-blue-700 border border-blue-200",
-    uploaded: "bg-amber-50 text-amber-700 border border-amber-200",
-    error: "bg-red-50 text-red-700 border border-red-200",
-    pending: "bg-gray-50 text-gray-500 border border-gray-200",
-  };
-  const labels: Record<string, string> = {
-    done: "Ready",
-    transcribing: "Processing",
-    extracting: "Extracting",
-    uploaded: "Queued",
-    error: "Failed",
-    pending: "Pending",
-  };
+function cleanName(raw: string) {
+  return raw.replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "");
+}
+
+// ── Inline rename ─────────────────────────────────────────────────────────
+function RenameInput({ value, onSave, onCancel, className = "" }: {
+  value: string; onSave: (v: string) => void; onCancel: () => void; className?: string;
+}) {
+  const [val, setVal] = useState(value);
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
   return (
-    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${styles[status] ?? styles.pending}`}>
-      {labels[status] ?? status}
-    </span>
+    <input
+      ref={ref} value={val}
+      onChange={e => setVal(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === "Enter") { e.stopPropagation(); onSave(val.trim() || value); }
+        if (e.key === "Escape") { e.stopPropagation(); onCancel(); }
+      }}
+      onBlur={() => onSave(val.trim() || value)}
+      onClick={e => e.stopPropagation()}
+      className={`bg-transparent border-b border-white/40 outline-none text-white placeholder-white/40 ${className}`}
+    />
   );
 }
 
-// ── Draggable Lecture Card ──────────────────────────────────────────────────
-function LectureCard({
-  job,
-  courses,
-  onClick,
-  onDragStart,
-}: {
-  job: Job;
-  courses: Course[];
-  onClick: () => void;
-  onDragStart: (uploadKey: string) => void;
+// ── Bubble panel ──────────────────────────────────────────────────────────
+function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLecture }: {
+  course: Course | null;
+  jobs: Job[];
+  pos: BubblePos | null;
+  isOpen: boolean;
+  isClosing: boolean;
+  onClose: () => void;
+  onClickLecture: (job: Job) => void;
 }) {
+  if (!course || !pos) return null;
+  const lectures = jobs.filter(j => j.course === course.id);
+
+  const statusStyle: Record<string, string> = {
+    done: "text-emerald-400 bg-emerald-400/10 border-emerald-400/25",
+    transcribing: "text-blue-400 bg-blue-400/10 border-blue-400/25",
+    extracting: "text-blue-400 bg-blue-400/10 border-blue-400/25",
+    error: "text-red-400 bg-red-400/10 border-red-400/25",
+    uploaded: "text-amber-400 bg-amber-400/10 border-amber-400/25",
+  };
+  const statusLabel: Record<string, string> = {
+    done: "Ready", transcribing: "Processing", extracting: "Extracting",
+    error: "Failed", uploaded: "Queued",
+  };
+
+  return (
+    <div
+      className="absolute z-50 pointer-events-none"
+      style={{ top: pos.top, left: pos.left }}
+    >
+      {/* arrow */}
+      <div
+        className="absolute top-1/2 -translate-y-1/2 w-0 h-0 transition-all duration-300"
+        style={
+          pos.arrowSide === "left"
+            ? {
+                right: "100%",
+                borderTop: "9px solid transparent",
+                borderBottom: "9px solid transparent",
+                borderRight: "10px solid rgba(14,22,18,0.95)",
+                opacity: isOpen && !isClosing ? 1 : 0,
+                transform: `translateY(-50%) translateX(${isOpen && !isClosing ? "0" : "8px"})`,
+                transition: "opacity .25s .12s ease, transform .3s .12s cubic-bezier(.34,1.56,.64,1)",
+              }
+            : {
+                left: "100%",
+                borderTop: "9px solid transparent",
+                borderBottom: "9px solid transparent",
+                borderLeft: "10px solid rgba(14,22,18,0.95)",
+                opacity: isOpen && !isClosing ? 1 : 0,
+                transform: `translateY(-50%) translateX(${isOpen && !isClosing ? "0" : "-8px"})`,
+                transition: "opacity .25s .12s ease, transform .3s .12s cubic-bezier(.34,1.56,.64,1)",
+              }
+        }
+      />
+
+      {/* panel */}
+      <div
+        className="pointer-events-auto w-60 rounded-2xl border overflow-hidden"
+        style={{
+          background: "rgba(14,22,18,0.93)",
+          borderColor: "rgba(255,255,255,0.14)",
+          backdropFilter: "blur(28px)",
+          boxShadow: "0 24px 64px rgba(0,0,0,.7), inset 0 0 0 1px rgba(255,255,255,.04)",
+          transformOrigin: pos.transformOrigin,
+          opacity: isClosing ? 0 : isOpen ? 1 : 0,
+          transform: isClosing
+            ? "scale(.88) translateX(" + (pos.arrowSide === "left" ? "-6px" : "6px") + ")"
+            : isOpen
+            ? "scale(1) translateX(0)"
+            : "scale(.85) translateX(" + (pos.arrowSide === "left" ? "-8px" : "8px") + ")",
+          filter: isOpen && !isClosing ? "blur(0px)" : "blur(4px)",
+          transition: isClosing
+            ? "opacity .22s ease, transform .22s ease, filter .2s ease"
+            : "opacity .32s cubic-bezier(.22,1,.36,1), transform .38s cubic-bezier(.34,1.56,.64,1), filter .28s ease",
+        }}
+      >
+        {/* header */}
+        <div
+          className="px-3.5 py-3 border-b border-white/8"
+          style={{
+            opacity: isOpen && !isClosing ? 1 : 0,
+            transform: isOpen && !isClosing ? "translateY(0)" : "translateY(4px)",
+            transition: "opacity .2s .15s ease, transform .25s .15s ease",
+          }}
+        >
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: course.color, boxShadow: `0 0 6px ${course.color}99` }} />
+            <span className="text-[10px] font-mono text-white/60 tracking-wider">{course.id}</span>
+          </div>
+          <div className="text-sm font-medium text-white leading-tight">{course.name}</div>
+        </div>
+
+        {/* lecture list */}
+        <div
+          className="px-1.5 py-1.5"
+          style={{
+            opacity: isOpen && !isClosing ? 1 : 0,
+            transform: isOpen && !isClosing ? "translateY(0)" : "translateY(6px)",
+            transition: "opacity .2s .22s ease, transform .25s .22s ease",
+          }}
+        >
+          {lectures.length === 0 ? (
+            <p className="text-[10px] text-white/25 text-center py-3">No lectures yet</p>
+          ) : (
+            lectures.map(job => {
+              const name = job.displayName ?? cleanName(job.fileName ?? job.uploadKey);
+              return (
+                <div
+                  key={job.uploadKey}
+                  onClick={() => job.status === "done" && onClickLecture(job)}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg transition-colors ${job.status === "done" ? "cursor-pointer hover:bg-white/7" : "opacity-50"}`}
+                >
+                  <div
+                    className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                    style={{ background: `${course.color}18`, border: `1px solid ${course.color}33` }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={course.color} strokeWidth={2}>
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-medium text-white truncate">{name}</div>
+                    <div className="text-[9px] text-white/30 mt-0.5">{timeAgo(job.createdAt)}</div>
+                  </div>
+                  <span className={`text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 ${statusStyle[job.status] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+                    {statusLabel[job.status] ?? job.status}
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* footer */}
+        <div
+          className="px-3.5 py-2.5 border-t border-white/8 flex justify-center"
+          style={{
+            opacity: isOpen && !isClosing ? 1 : 0,
+            transform: isOpen && !isClosing ? "translateY(0)" : "translateY(4px)",
+            transition: "opacity .2s .28s ease, transform .2s .28s ease",
+          }}
+        >
+          <button
+            onClick={onClose}
+            className="text-[10px] px-4 py-1.5 rounded-lg border transition-colors"
+            style={{ color: course.color, background: `${course.color}0f`, borderColor: `${course.color}33` }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Course card ───────────────────────────────────────────────────────────
+function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs }: {
+  course: Course;
+  isOpen: boolean;
+  cardRef: (el: HTMLDivElement | null) => void;
+  onClick: (e: React.MouseEvent) => void;
+  onRename: (id: string, name: string) => void;
+  onRemove: (id: string) => void;
+  jobs: Job[];
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const lectures = jobs.filter(j => j.course === course.id);
+  const ready = lectures.filter(j => j.status === "done").length;
+
+  return (
+    <div
+      ref={cardRef}
+      onClick={onClick}
+      className="relative rounded-2xl overflow-hidden border cursor-pointer select-none group"
+      style={{
+        height: 152,
+        borderColor: isOpen ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.1)",
+        transform: isOpen ? "translateY(-4px) scale(1.015)" : "translateY(0) scale(1)",
+        boxShadow: isOpen ? "0 20px 50px rgba(0,0,0,.55)" : "none",
+        transition: "border-color .3s, transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .3s",
+      }}
+    >
+      <div className="absolute inset-0" style={{ background: courseGradient(course.color) }} />
+      <div className="absolute inset-0" style={{ background: isOpen ? "rgba(255,255,255,0.05)" : "linear-gradient(160deg,rgba(0,0,0,.12) 0%,rgba(0,0,0,.62) 100%)", transition: "background .3s" }} />
+
+      <div className="absolute inset-0 p-3.5 flex flex-col justify-between z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <div
+              className="w-2 h-2 rounded-full flex-shrink-0"
+              style={{
+                background: course.color,
+                boxShadow: `0 0 ${isOpen ? "10px" : "5px"} ${course.color}${isOpen ? "cc" : "88"}`,
+                transform: isOpen ? "scale(1.5)" : "scale(1)",
+                transition: "transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .3s",
+              }}
+            />
+            {renaming ? (
+              <RenameInput
+                value={course.name}
+                onSave={v => { onRename(course.id, v); setRenaming(false); }}
+                onCancel={() => setRenaming(false)}
+                className="text-xs font-mono w-24"
+              />
+            ) : (
+              <span
+                className="text-[10px] font-mono text-white/75 tracking-wider hover:text-white transition-colors"
+                onDoubleClick={e => { e.stopPropagation(); setRenaming(true); }}
+              >{course.name}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] font-mono text-white/40 bg-black/25 px-1.5 py-0.5 rounded backdrop-blur-sm">
+              {lectures.length} lec
+            </span>
+            <button
+              onClick={e => { e.stopPropagation(); onRemove(course.id); }}
+              className="opacity-0 group-hover:opacity-100 text-white/35 hover:text-white/80 text-xs transition-opacity"
+            >✕</button>
+          </div>
+        </div>
+
+        <div
+          className="flex-1 flex items-center py-1"
+          style={{
+            transform: isOpen ? "translateX(3px)" : "translateX(0)",
+            transition: "transform .35s cubic-bezier(.34,1.56,.64,1)",
+          }}
+        >
+          <p className="text-white text-lg leading-tight" style={{ fontFamily: "'DM Serif Display', serif", letterSpacing: "-0.2px", textShadow: "0 1px 10px rgba(0,0,0,0.6)" }}>
+            {course.name}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1">
+            {["Summary", "Quiz", "Cards"].map(t => (
+              <span key={t} className="text-white/45 text-[8px] font-medium uppercase tracking-wider bg-white/10 border border-white/13 px-1.5 py-0.5 rounded">{t}</span>
+            ))}
+          </div>
+          <span className="text-[9px] text-white/35">{ready}/{lectures.length} ready</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Lecture card ──────────────────────────────────────────────────────────
+function LectureCard({ job, courses, onClick, onDragStart, onRename, isDark }: {
+  job: Job; courses: Course[]; onClick: () => void;
+  onDragStart: (key: string) => void; onRename: (key: string, name: string) => void; isDark: boolean;
+}) {
+  const [renaming, setRenaming] = useState(false);
   const course = courses.find(c => c.id === job.course);
-  const rawName = job.fileName ?? job.uploadKey;
-  const name = rawName.replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "");
+  const displayName = job.displayName ?? cleanName(job.fileName ?? job.uploadKey);
+
+  const statusStyle: Record<string, string> = {
+    done: "text-emerald-400 bg-emerald-400/10 border-emerald-400/25",
+    transcribing: "text-blue-400 bg-blue-400/10 border-blue-400/25",
+    extracting: "text-blue-400 bg-blue-400/10 border-blue-400/25",
+    error: "text-red-400 bg-red-400/10 border-red-400/25",
+    uploaded: "text-amber-400 bg-amber-400/10 border-amber-400/25",
+  };
+  const statusLabel: Record<string, string> = {
+    done: "Ready", transcribing: "Processing", extracting: "Extracting",
+    error: "Failed", uploaded: "Queued", pending: "Pending",
+  };
 
   return (
     <div
       draggable
-      onDragStart={e => {
-        e.dataTransfer.effectAllowed = "move";
-        onDragStart(job.uploadKey);
-      }}
+      onDragStart={e => { e.dataTransfer.effectAllowed = "move"; onDragStart(job.uploadKey); }}
       onClick={job.status === "done" ? onClick : undefined}
-      className={`bg-white rounded-xl border border-gray-200 p-4 shadow-sm transition-all select-none
-        ${job.status === "done" ? "hover:border-blue-300 hover:shadow-md cursor-grab active:cursor-grabbing active:opacity-60 active:scale-95" : "opacity-70 cursor-grab active:cursor-grabbing"}
+      className={`glass-card rounded-xl p-3.5 transition-all select-none group
+        ${job.status === "done" ? "cursor-grab active:cursor-grabbing active:opacity-60 active:scale-95 hover:-translate-y-0.5" : "opacity-60 cursor-grab"}
       `}
     >
-      {/* drag handle hint */}
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
-          <div className="flex items-center gap-2 mt-1.5">
+          {renaming ? (
+            <RenameInput
+              value={displayName}
+              onSave={v => { onRename(job.uploadKey, v); setRenaming(false); }}
+              onCancel={() => setRenaming(false)}
+              className="text-sm w-full"
+            />
+          ) : (
+            <p
+              className={`text-sm font-medium truncate cursor-text ${isDark ? "text-white" : "text-gray-900"}`}
+              onDoubleClick={e => { e.stopPropagation(); setRenaming(true); }}
+              title="Double-click to rename"
+            >{displayName}</p>
+          )}
+          <div className="flex items-center gap-1.5 mt-1">
             {course && (
-              <span className="text-xs flex items-center gap-1 text-gray-500">
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: course.color }} />
+              <span className={`flex items-center gap-1 text-[10px] ${isDark ? "text-white/50" : "text-gray-500"}`}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: course.color }} />
                 {course.name}
               </span>
             )}
-            <span className="text-xs text-gray-400">{timeAgo(job.createdAt)}</span>
+            <span className={`text-[10px] ${isDark ? "text-white/30" : "text-gray-400"}`}>{timeAgo(job.createdAt)}</span>
           </div>
         </div>
-        <StatusBadge status={job.status} />
+        <span className={`text-[9px] font-medium uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 ${statusStyle[job.status] ?? "text-white/30 bg-white/5 border-white/10"}`}>
+          {statusLabel[job.status] ?? job.status}
+        </span>
       </div>
       {job.status === "done" && (
-        <div className="flex items-center gap-1 mt-3 pt-3 border-t border-gray-100">
-          {["Summary", "Quiz", "Flashcards"].map(tab => (
-            <span key={tab} className="text-xs text-gray-400 bg-gray-50 rounded-md px-2 py-0.5">{tab}</span>
+        <div className={`flex gap-1 pt-2 border-t ${isDark ? "border-white/8" : "border-black/8"}`}>
+          {["Summary", "Quiz", "Flashcards"].map(t => (
+            <span key={t} className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${isDark ? "text-white/35 bg-white/5 border-white/10" : "text-gray-400 bg-black/4 border-black/8"}`}>{t}</span>
           ))}
         </div>
       )}
@@ -116,181 +404,50 @@ function LectureCard({
   );
 }
 
-// ── Course Drop Target ──────────────────────────────────────────────────────
-function CourseDropTarget({
-  course,
-  onDrop,
-  onRemove,
-  lectureCount,
-}: {
-  course: Course;
-  onDrop: (courseId: string) => void;
-  onRemove: (id: string) => void;
-  lectureCount: number;
-}) {
+// ── Trash ─────────────────────────────────────────────────────────────────
+function TrashZone({ onDrop, isDark }: { onDrop: () => void; isDark: boolean }) {
   const [over, setOver] = useState(false);
-
-  return (
-    <div
-      onDragOver={e => { e.preventDefault(); setOver(true); }}
-      onDragLeave={() => setOver(false)}
-      onDrop={e => { e.preventDefault(); setOver(false); onDrop(course.id); }}
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border-2 transition-all group
-        ${over
-          ? "border-dashed scale-[1.02]"
-          : "border-transparent hover:border-dashed hover:border-gray-200"
-        }`}
-      style={over ? { borderColor: course.color, backgroundColor: `${course.color}10` } : {}}
-    >
-      <div
-        className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-transform ${over ? "scale-125" : ""}`}
-        style={{ backgroundColor: course.color }}
-      />
-      <span className="text-sm text-gray-700 flex-1 truncate">{course.name}</span>
-      <span className="text-xs text-gray-400">{lectureCount}</span>
-      <button
-        onClick={() => onRemove(course.id)}
-        className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-opacity text-xs ml-1"
-      >✕</button>
-    </div>
-  );
-}
-
-// ── Trash Drop Target ───────────────────────────────────────────────────────
-function TrashZone({ onDrop }: { onDrop: () => void }) {
-  const [over, setOver] = useState(false);
-
   return (
     <div
       onDragOver={e => { e.preventDefault(); setOver(true); }}
       onDragLeave={() => setOver(false)}
       onDrop={e => { e.preventDefault(); setOver(false); onDrop(); }}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border-2 border-dashed transition-all
-        ${over
-          ? "border-red-400 bg-red-50 scale-[1.02]"
-          : "border-gray-200 hover:border-red-300 hover:bg-red-50"
-        }`}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-dashed transition-all text-sm
+        ${over ? "border-red-400/60 bg-red-400/8 text-red-400 scale-[1.02]"
+          : isDark ? "border-white/10 text-white/25 hover:border-red-400/30 hover:text-red-400/60"
+          : "border-black/10 text-gray-400 hover:border-red-400/30 hover:text-red-500"}`}
     >
-      <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${over ? "bg-red-100" : "bg-gray-100"}`}>
-        <svg className={`w-4 h-4 transition-colors ${over ? "text-red-500" : "text-gray-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </div>
-      <span className={`text-sm font-medium transition-colors ${over ? "text-red-600" : "text-gray-400"}`}>
-        {over ? "Release to delete" : "Drag here to delete"}
-      </span>
+      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+        <path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" />
+      </svg>
+      <span className="text-xs">{over ? "Release to delete" : "Drag here to delete"}</span>
     </div>
   );
 }
 
-// ── Upload Zone ─────────────────────────────────────────────────────────────
-function UploadZone({ onUpload, courses }: { onUpload: (file: File, course: string) => void; courses: Course[] }) {
-  const [dragging, setDragging] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState("");
-
-  // Reset selectedCourse if it no longer exists in courses
-  useEffect(() => {
-    if (selectedCourse && !courses.find(c => c.id === selectedCourse)) {
-      setSelectedCourse("");
-    }
-  }, [courses, selectedCourse]);
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    if (e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      onUpload(file, selectedCourse);
-    }
-  };
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) onUpload(file, selectedCourse);
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-xs font-semibold text-gray-900 uppercase tracking-wider">New Lecture</h2>
-        <select
-          key={courses.map(c => c.id).join(",")}  // ← forces re-render when courses change
-          value={selectedCourse}
-          onChange={e => setSelectedCourse(e.target.value)}
-          className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">No course</option>
-          {courses.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-      </div>
-      <label
-        onDragOver={e => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-        className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl p-6 cursor-pointer transition-all ${
-          dragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-300 hover:bg-gray-50"
-        }`}
-      >
-        <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${dragging ? "bg-blue-100" : "bg-gray-100"}`}>
-          <svg className={`w-4 h-4 ${dragging ? "text-blue-500" : "text-gray-400"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-        </div>
-        <p className="text-xs font-medium text-gray-600">Drop files or click</p>
-        <input type="file" className="hidden" onChange={handleFile} />
-      </label>
-    </div>
-  );
-}
-// ── Stats Bar ───────────────────────────────────────────────────────────────
-function StatsBar({ jobs }: { jobs: Job[] }) {
-  const stats = [
-    { label: "Total", value: jobs.length },
-    { label: "Ready", value: jobs.filter(j => j.status === "done").length },
-    { label: "Processing", value: jobs.filter(j => j.status === "transcribing" || j.status === "extracting" || j.status === "uploaded").length },
-  ];
-  return (
-    <div className="grid grid-cols-3 gap-3">
-      {stats.map(s => (
-        <div key={s.label} className="bg-white rounded-2xl border border-gray-200 px-4 py-3 shadow-sm">
-          <p className="text-2xl font-bold text-gray-900">{s.value}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── Delete Confirmation Modal ───────────────────────────────────────────────
+// ── Delete modal ──────────────────────────────────────────────────────────
 function DeleteModal({ name, onConfirm, onCancel }: { name: string; onConfirm: () => void; onCancel: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-xl p-6 max-w-sm w-full mx-4">
-        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mb-4">
-          <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="glass-card rounded-2xl p-6 max-w-sm w-full mx-4 border border-white/15">
+        <div className="w-10 h-10 rounded-full bg-red-400/15 border border-red-400/25 flex items-center justify-center mb-4">
+          <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
           </svg>
         </div>
-        <h3 className="text-base font-semibold text-gray-900 mb-1">Delete lecture?</h3>
-        <p className="text-sm text-gray-500 mb-5">
-          <span className="font-medium text-gray-700">{name}</span> will be permanently removed.
-        </p>
+        <h3 className="text-base font-semibold mb-1">Delete lecture?</h3>
+        <p className="text-sm opacity-50 mb-5"><span className="opacity-80 font-medium">{name}</span> will be permanently removed.</p>
         <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2 hover:bg-gray-50 transition-colors">
-            Cancel
-          </button>
-          <button onClick={onConfirm} className="flex-1 text-sm bg-red-600 text-white rounded-xl px-4 py-2 hover:bg-red-700 transition-colors font-medium">
-            Delete
-          </button>
+          <button onClick={onCancel} className="flex-1 text-sm border border-white/15 rounded-xl px-4 py-2 hover:bg-white/5 transition-colors">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 text-sm bg-red-500/80 hover:bg-red-500 text-white rounded-xl px-4 py-2 transition-colors font-medium">Delete</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ── Main Dashboard ──────────────────────────────────────────────────────────
+// ── Main ──────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
   const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -302,15 +459,25 @@ export default function DashboardPage() {
   const [uploadError, setUploadError] = useState("");
   const [newCourseName, setNewCourseName] = useState("");
   const [addingCourse, setAddingCourse] = useState(false);
-
-  // Drag state
-  const draggingKey = useRef<string | null>(null);
+  const [isDark, setIsDark] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
+  const [selectedCourse, setSelectedCourse] = useState("");
+  const [draggingFile, setDraggingFile] = useState(false);
+  const draggingKey = useRef<string | null>(null);
 
-  // ── Load courses from localStorage ──
+  // ── Bubble state ──
+  const [openCourseId, setOpenCourseId] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const [bubblePos, setBubblePos] = useState<BubblePos | null>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const mainRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const saved = localStorage.getItem("lecsum-courses");
     if (saved) setCourses(JSON.parse(saved));
+    const theme = localStorage.getItem("lecsum-theme");
+    if (theme) setIsDark(theme === "dark");
   }, []);
 
   const saveCourses = (updated: Course[]) => {
@@ -318,27 +485,89 @@ export default function DashboardPage() {
     localStorage.setItem("lecsum-courses", JSON.stringify(updated));
   };
 
-  // ── Fetch jobs ──
   const fetchJobs = useCallback(async () => {
     try {
       const res = await fetch("/api/lectures");
       if (!res.ok) return;
       const data = await res.json();
       setJobs(data.lectures ?? []);
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false);
-    }
+    } catch { } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 10000);
-    return () => clearInterval(interval);
+    const iv = setInterval(fetchJobs, 10000);
+    return () => clearInterval(iv);
   }, [fetchJobs]);
 
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    localStorage.setItem("lecsum-theme", next ? "dark" : "light");
+  };
+
+  // ── Bubble logic ──
+  const calcBubblePos = (courseId: string): BubblePos | null => {
+    const cardEl = cardRefs.current.get(courseId);
+    const mainEl = mainRef.current;
+    if (!cardEl || !mainEl) return null;
+    const cr = cardEl.getBoundingClientRect();
+    const mr = mainEl.getBoundingClientRect();
+    const enriched = courses.map(c => ({ ...c, lectureCount: jobs.filter(j => j.course === c.id).length }));
+    const idx = enriched.findIndex(c => c.id === courseId);
+    const col = idx % 3;
+    const bw = 240, bh = 260;
+    const gap = 14;
+    let left: number, arrowSide: "left" | "right", transformOrigin: string;
+    if (col < 2) {
+      left = cr.right - mr.left + gap;
+      arrowSide = "left";
+      transformOrigin = "left center";
+    } else {
+      left = cr.left - mr.left - bw - gap;
+      arrowSide = "right";
+      transformOrigin = "right center";
+    }
+    const top = cr.top - mr.top + cr.height / 2 - bh / 2;
+    return { top: Math.max(8, top), left, arrowSide, transformOrigin };
+  };
+
+  const openBubble = (courseId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+
+    if (openCourseId === courseId) {
+      closeBubble();
+      return;
+    }
+
+    if (openCourseId) {
+      // instant swap: close current, open new after tiny gap
+      setIsClosing(true);
+      setTimeout(() => {
+        setIsClosing(false);
+        setOpenCourseId(courseId);
+        setBubblePos(calcBubblePos(courseId));
+      }, 80);
+    } else {
+      setOpenCourseId(courseId);
+      setBubblePos(calcBubblePos(courseId));
+    }
+  };
+
+  const closeBubble = () => {
+    setIsClosing(true);
+    closeTimer.current = setTimeout(() => {
+      setOpenCourseId(null);
+      setIsClosing(false);
+      setBubblePos(null);
+    }, 240);
+  };
+
   // ── Course actions ──
+  const renameCourse = (id: string, name: string) => {
+    saveCourses(courses.map(c => c.id === id ? { ...c, name } : c));
+  };
   const addCourse = () => {
     if (!newCourseName.trim()) return;
     const course: Course = {
@@ -348,84 +577,61 @@ export default function DashboardPage() {
       lectureCount: 0,
     };
     saveCourses([...courses, course]);
-    setNewCourseName("");
-    setAddingCourse(false);
+    setNewCourseName(""); setAddingCourse(false);
+  };
+  const removeCourse = (id: string) => saveCourses(courses.filter(c => c.id !== id));
+
+  // ── Lecture actions ──
+  const renameLecture = async (uploadKey: string, displayName: string) => {
+    setJobs(prev => prev.map(j => j.uploadKey === uploadKey ? { ...j, displayName } : j));
+    try {
+      await fetch(`/api/lectures/${encodeURIComponent(uploadKey)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName }),
+      });
+    } catch { fetchJobs(); }
   };
 
-  const removeCourse = (id: string) => {
-    saveCourses(courses.filter(c => c.id !== id));
-  };
-
-  // ── Drag handlers ──
-  const handleDragStart = (uploadKey: string) => {
-    draggingKey.current = uploadKey;
-  };
-
+  // ── Drag ──
+  const handleDragStart = (key: string) => { draggingKey.current = key; };
   const handleDropOnCourse = async (courseId: string) => {
-    const key = draggingKey.current;
-    if (!key) return;
-    draggingKey.current = null;
-
-    // Optimistic update
+    const key = draggingKey.current; if (!key) return; draggingKey.current = null;
     setJobs(prev => prev.map(j => j.uploadKey === key ? { ...j, course: courseId } : j));
-
     try {
       await fetch(`/api/lectures/${encodeURIComponent(key)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ course: courseId }),
       });
-    } catch {
-      fetchJobs(); // revert on failure
-    }
+    } catch { fetchJobs(); }
   };
-
   const handleDropOnTrash = () => {
-    const key = draggingKey.current;
-    if (!key) return;
-    draggingKey.current = null;
+    const key = draggingKey.current; if (!key) return; draggingKey.current = null;
     const job = jobs.find(j => j.uploadKey === key);
     if (job) setDeleteTarget(job);
   };
-
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    const key = deleteTarget.uploadKey;
-    setDeleteTarget(null);
-
-    // Optimistic remove
+    const key = deleteTarget.uploadKey; setDeleteTarget(null);
     setJobs(prev => prev.filter(j => j.uploadKey !== key));
-
-    try {
-      await fetch(`/api/lectures/${encodeURIComponent(key)}`, { method: "DELETE" });
-    } catch {
-      fetchJobs(); // revert on failure
-    }
+    try { await fetch(`/api/lectures/${encodeURIComponent(key)}`, { method: "DELETE" }); }
+    catch { fetchJobs(); }
   };
 
   // ── Upload ──
   const handleUpload = async (file: File, course: string) => {
-    setUploading(true);
-    setUploadError("");
+    setUploading(true); setUploadError("");
     try {
       const hashBuffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hash = hashArray.map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
-      const ext = file.name.split(".").pop();
+      const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
       const key = file.name;
       const res = await fetch("/api/upload-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: key, contentType: file.type || "application/octet-stream" }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename: key, contentType: file.type || "application/octet-stream", hash }),
       });
       if (!res.ok) throw new Error("Failed to get upload URL");
       const { url } = await res.json();
-      const upload = await fetch(url, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-      });
-      if (!upload.ok) throw new Error("Upload failed");
+      const up = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+      if (!up.ok) throw new Error("Upload failed");
       router.push(`/processing?key=${encodeURIComponent(key)}&course=${encodeURIComponent(course)}`);
     } catch (e: unknown) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
@@ -433,168 +639,244 @@ export default function DashboardPage() {
     }
   };
 
-  // ── Derived state ──
-  const enrichedCourses = courses.map(c => ({
-    ...c,
-    lectureCount: jobs.filter(j => j.course === c.id).length,
-  }));
+  const enrichedCourses = courses.map(c => ({ ...c, lectureCount: jobs.filter(j => j.course === c.id).length }));
+  const openCourse = enrichedCourses.find(c => c.id === openCourseId) ?? null;
 
-  const filtered = jobs.filter(j => {
-    const name = (j.fileName ?? j.uploadKey).toLowerCase();
-    return (
-      name.includes(search.toLowerCase()) &&
-      (courseFilter === "all" || j.course === courseFilter)
-    );
-  });
+  const filtered = (courseFilter === "all" ? jobs : courseFilter === "" ? jobs.filter(j => !j.course) : jobs.filter(j => j.course === courseFilter))
+    .filter(j => (j.displayName ?? cleanName(j.fileName ?? j.uploadKey)).toLowerCase().includes(search.toLowerCase()));
+
+  const T = isDark ? {
+    bg: "bg-[#0d1512]", text: "text-white", textMuted: "text-white/50", textFaint: "text-white/25",
+    rail: "bg-black/40 border-white/8", railIcon: "text-white/40 hover:text-white hover:bg-white/8",
+    railActive: "text-green-400 bg-white/10",
+    surface: "bg-white/[0.04] border-white/10", input: "bg-white/[0.04] border-white/10 text-white placeholder-white/25 focus:border-white/25",
+    sidebar: "bg-black/35 border-white/8", statBox: "bg-white/[0.04] border-white/10",
+    toggleTrack: "bg-white/10", toggleThumb: "translate-x-0 bg-white/60",
+    searchBox: "bg-white/[0.04] border-white/10 text-white/50",
+    kbd: "bg-white/8 border-white/10 text-white/25",
+    tab: "bg-transparent border-white/8 text-white/40 hover:text-white/70 hover:border-white/15",
+    tabActive: "bg-white/12 border-white/20 text-white",
+    clRow: "hover:bg-white/6 hover:border-white/10",
+  } : {
+    bg: "bg-[#eef3f0]", text: "text-gray-900", textMuted: "text-gray-500", textFaint: "text-gray-400",
+    rail: "bg-white/70 border-black/8", railIcon: "text-black/40 hover:text-black/80 hover:bg-black/5",
+    railActive: "text-green-700 bg-black/7",
+    surface: "bg-white/60 border-black/8", input: "bg-white/60 border-black/10 text-gray-800 placeholder-gray-400 focus:border-black/20",
+    sidebar: "bg-white/50 border-black/8", statBox: "bg-white/60 border-black/8",
+    toggleTrack: "bg-green-400/30", toggleThumb: "translate-x-4 bg-green-600",
+    searchBox: "bg-white/60 border-black/10 text-gray-500",
+    kbd: "bg-black/6 border-black/10 text-gray-400",
+    tab: "bg-transparent border-black/8 text-gray-400 hover:text-gray-700",
+    tabActive: "bg-black/8 border-black/12 text-gray-900",
+    clRow: "hover:bg-black/4 hover:border-black/8",
+  };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Delete confirmation modal */}
+    <div className={`min-h-screen overflow-hidden ${T.bg} ${T.text}`} onClick={() => openCourseId && closeBubble()}>
+      {/* Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className={`absolute w-[480px] h-[480px] -top-28 -left-20 rounded-full blur-[90px] opacity-60 ${isDark ? "bg-[radial-gradient(circle,#0d3d26_0%,transparent_70%)]" : "bg-[radial-gradient(circle,#c8e6d4_0%,transparent_70%)]"}`} />
+        <div className={`absolute w-[560px] h-[560px] top-20 -right-40 rounded-full blur-[90px] opacity-60 ${isDark ? "bg-[radial-gradient(circle,#0a2a3a_0%,transparent_70%)]" : "bg-[radial-gradient(circle,#c5ddf0_0%,transparent_70%)]"}`} />
+        <div className={`absolute w-[380px] h-[380px] -bottom-16 left-44 rounded-full blur-[90px] opacity-60 ${isDark ? "bg-[radial-gradient(circle,#1a1040_0%,transparent_70%)]" : "bg-[radial-gradient(circle,#d5cef5_0%,transparent_70%)]"}`} />
+        <div
+          className={`absolute inset-0 ${isDark ? "opacity-[0.07]" : "opacity-[0.06]"}`}
+          style={{
+            backgroundImage: `linear-gradient(${isDark ? "rgba(255,255,255,1)" : "rgba(0,0,0,1)"} 1px,transparent 1px),linear-gradient(90deg,${isDark ? "rgba(255,255,255,1)" : "rgba(0,0,0,1)"} 1px,transparent 1px)`,
+            backgroundSize: "44px 44px",
+          }}
+        />
+      </div>
+
+      {/* Layout */}
+      <div className="relative z-10 flex min-h-screen">
+        {/* Rail */}
+        <div className={`w-12 flex-shrink-0 flex flex-col items-center py-3 gap-1 border-r backdrop-blur-xl ${T.rail}`}>
+          {[
+            <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+            <><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></>,
+            <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></>,
+          ].map((icon, i) => (
+            <button key={i} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${i === 0 ? T.railActive : T.railIcon}`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>{icon}</svg>
+            </button>
+          ))}
+          <div className="mt-auto mb-2 w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-green-700 flex items-center justify-center text-white text-[10px] font-medium border border-white/20">VD</div>
+        </div>
+
+        {/* Main */}
+        <div ref={mainRef} className="flex-1 min-w-0 p-5 overflow-hidden relative">
+          {/* Topbar */}
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-2xl" style={{ fontFamily: "'DM Serif Display',serif", letterSpacing: "-0.5px" }}>Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <div className={`flex items-center gap-2 border rounded-xl px-3 py-2 backdrop-blur-md ${T.searchBox}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className={`bg-transparent outline-none text-xs w-28 ${T.textMuted}`} />
+                <span className={`text-[9px] font-mono border rounded px-1 py-0.5 ${T.kbd}`}>Ctrl+K</span>
+              </div>
+              <button onClick={toggleTheme} className="flex items-center gap-2">
+                <div className={`w-9 h-5 rounded-full relative transition-colors duration-300 ${T.toggleTrack}`}>
+                  <div className={`absolute top-0.5 w-4 h-4 rounded-full transition-transform duration-300 shadow ${T.toggleThumb}`} />
+                </div>
+                <span className="text-sm">{isDark ? "🌙" : "☀️"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter tabs */}
+          <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
+            {[{ id: "all", label: "All" }, { id: "", label: "Unassigned" }, ...enrichedCourses.map(c => ({ id: c.id, label: c.name }))].map(f => (
+              <button key={f.id} onClick={() => setCourseFilter(f.id)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-all whitespace-nowrap flex-shrink-0 ${courseFilter === f.id ? T.tabActive : T.tab}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[{ label: "Total", value: jobs.length }, { label: "Ready", value: jobs.filter(j => j.status === "done").length }, { label: "Processing", value: jobs.filter(j => ["transcribing","extracting","uploaded"].includes(j.status)).length }].map(s => (
+              <div key={s.label} className={`rounded-xl border px-4 py-3 backdrop-blur-sm ${T.statBox}`}>
+                <div className="text-2xl" style={{ fontFamily: "'DM Serif Display',serif" }}>{s.value}</div>
+                <div className={`text-[10px] uppercase tracking-widest mt-0.5 ${T.textFaint}`}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Course cards */}
+          {enrichedCourses.length > 0 && (
+            <>
+              <div className={`text-[9px] uppercase tracking-widest mb-2 ${T.textFaint}`}>Courses</div>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                {enrichedCourses.map(c => (
+                  <CourseCard
+                    key={c.id}
+                    course={c}
+                    isOpen={openCourseId === c.id}
+                    cardRef={el => { if (el) cardRefs.current.set(c.id, el); else cardRefs.current.delete(c.id); }}
+                    onClick={e => openBubble(c.id, e)}
+                    onRename={renameCourse}
+                    onRemove={removeCourse}
+                    jobs={jobs}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Bubble panel */}
+          <BubblePanel
+            course={openCourse}
+            jobs={jobs}
+            pos={bubblePos}
+            isOpen={!!openCourseId && !isClosing}
+            isClosing={isClosing}
+            onClose={closeBubble}
+            onClickLecture={job => { closeBubble(); router.push(`/study?key=${encodeURIComponent(job.transcriptKey ?? "")}`); }}
+          />
+
+          {/* Lecture grid */}
+          <div className={`text-[9px] uppercase tracking-widest mb-2 ${T.textFaint}`}>
+            {courseFilter === "all" ? "All lectures" : courseFilter === "" ? "Unassigned" : enrichedCourses.find(c => c.id === courseFilter)?.name ?? "Lectures"}
+          </div>
+          {loading ? (
+            <div className="grid grid-cols-3 gap-3">
+              {[...Array(3)].map((_, i) => <div key={i} className={`rounded-xl border h-20 animate-pulse ${T.statBox}`} />)}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className={`rounded-xl border p-8 text-center ${T.surface}`}>
+              <p className={`text-sm ${T.textMuted}`}>No lectures{search ? " match your search" : " yet"}.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3">
+              {filtered.map(job => (
+                <LectureCard
+                  key={job.uploadKey} job={job} courses={enrichedCourses} isDark={isDark}
+                  onDragStart={handleDragStart} onRename={renameLecture}
+                  onClick={() => router.push(`/study?key=${encodeURIComponent(job.transcriptKey ?? "")}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className={`w-64 flex-shrink-0 border-l backdrop-blur-2xl flex flex-col gap-3 p-4 ${T.sidebar}`} onClick={e => e.stopPropagation()}>
+          <div className={`rounded-2xl border p-4 ${T.surface}`}>
+            <div className={`text-[9px] uppercase tracking-widest mb-3 ${T.textFaint}`}>New Lecture</div>
+            <select key={courses.map(c => c.id).join(",")} value={selectedCourse} onChange={e => setSelectedCourse(e.target.value)}
+              className={`w-full text-xs border rounded-lg px-2 py-1.5 mb-3 outline-none backdrop-blur-sm ${T.input}`}>
+              <option value="">No course</option>
+              {enrichedCourses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <label
+              onDragOver={e => { e.preventDefault(); if (e.dataTransfer.types.includes("Files")) setDraggingFile(true); }}
+              onDragLeave={() => setDraggingFile(false)}
+              onDrop={e => { e.preventDefault(); setDraggingFile(false); const f = e.dataTransfer.files[0]; if (f) handleUpload(f, selectedCourse); }}
+              className={`flex flex-col items-center gap-2 border border-dashed rounded-xl p-5 cursor-pointer transition-all
+                ${draggingFile ? isDark ? "border-green-400/50 bg-green-400/5" : "border-green-600/40 bg-green-600/4"
+                  : isDark ? "border-white/10 hover:border-green-400/30 hover:bg-green-400/[0.03]"
+                  : "border-black/10 hover:border-green-600/30 hover:bg-green-600/[0.03]"}`}
+            >
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isDark ? "bg-white/8" : "bg-black/6"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <span className={`text-[10px] text-center ${T.textMuted}`}>Drop files or click</span>
+              <span className={`text-[9px] tracking-wide ${T.textFaint}`}>MP3 · PDF · DOCX · PPTX</span>
+              <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleUpload(f, selectedCourse); }} />
+            </label>
+            {uploading && <p className={`text-xs mt-2 text-center ${T.textMuted}`}>Uploading…</p>}
+            {uploadError && <p className="text-xs mt-2 text-center text-red-400">{uploadError}</p>}
+          </div>
+
+          <div className={`rounded-2xl border p-4 flex-1 ${T.surface}`}>
+            <div className="flex items-center justify-between mb-3">
+              <span className={`text-[9px] uppercase tracking-widest ${T.textFaint}`}>Courses</span>
+              <button onClick={() => setAddingCourse(true)} className="text-[10px] text-green-400 hover:text-green-300 font-medium">+ Add</button>
+            </div>
+            <div className="space-y-0.5">
+              {enrichedCourses.map(c => (
+                <div key={c.id}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); handleDropOnCourse(c.id); }}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border border-transparent transition-all cursor-pointer ${T.clRow}`}>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: c.color, boxShadow: `0 0 5px ${c.color}66` }} />
+                  <span className={`text-xs flex-1 truncate ${T.text}`}>{c.name}</span>
+                  <span className={`text-[10px] font-mono ${T.textFaint}`}>{c.lectureCount}</span>
+                </div>
+              ))}
+              {enrichedCourses.length === 0 && !addingCourse && <p className={`text-[10px] text-center py-2 ${T.textFaint}`}>No courses yet</p>}
+              {addingCourse && (
+                <div className="flex gap-1.5 mt-2">
+                  <input autoFocus value={newCourseName} onChange={e => setNewCourseName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") addCourse(); if (e.key === "Escape") setAddingCourse(false); }}
+                    placeholder="Course name…" className={`flex-1 text-xs border rounded-lg px-2 py-1.5 outline-none ${T.input}`} />
+                  <button onClick={addCourse} className="text-[10px] bg-green-500/80 hover:bg-green-500 text-white px-2.5 py-1.5 rounded-lg transition-colors">Add</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <TrashZone onDrop={handleDropOnTrash} isDark={isDark} />
+        </div>
+      </div>
+
       {deleteTarget && (
         <DeleteModal
-          name={(deleteTarget.fileName ?? deleteTarget.uploadKey).replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "")}
+          name={deleteTarget.displayName ?? cleanName(deleteTarget.fileName ?? deleteTarget.uploadKey)}
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
         />
       )}
 
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-              </svg>
-            </div>
-            <span className="font-semibold text-gray-900">Lecsum</span>
-          </div>
-          <nav className="flex items-center gap-1">
-            <span className="text-sm font-medium text-blue-600 px-3 py-1.5 bg-blue-50 rounded-lg">Dashboard</span>
-          </nav>
-        </div>
-      </header>
-
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">My Lectures</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Drag cards onto a course to assign, or onto the trash to delete.</p>
-        </div>
-
-        <div className="mb-6">
-          <StatsBar jobs={jobs} />
-        </div>
-
-        <div className="grid grid-cols-[1fr_260px] gap-6">
-          {/* ── Main grid ── */}
-          <div className="min-w-0">
-            <div className="flex gap-3 mb-4">
-              <div className="flex-1 relative">
-                <svg className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  placeholder="Search lectures..."
-                  className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <select
-                value={courseFilter}
-                onChange={e => setCourseFilter(e.target.value)}
-                className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Courses</option>
-                <option value="">Unassigned</option>
-                {enrichedCourses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {loading ? (
-              <div className="grid grid-cols-2 gap-3">
-                {[...Array(4)].map((_, i) => (
-                  <div key={i} className="bg-white rounded-xl border border-gray-200 p-4 h-24 animate-pulse">
-                    <div className="h-3 bg-gray-100 rounded w-3/4 mb-2" />
-                    <div className="h-2 bg-gray-100 rounded w-1/2" />
-                  </div>
-                ))}
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-gray-200 p-12 text-center">
-                <p className="text-sm text-gray-500">
-                  {search || courseFilter !== "all" ? "No lectures match your filters." : "No lectures yet — upload one to get started."}
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                {filtered.map(job => (
-                  <LectureCard
-                    key={job.uploadKey}
-                    job={job}
-                    courses={enrichedCourses}
-                    onDragStart={handleDragStart}
-                    onClick={() => router.push(`/study?key=${encodeURIComponent(job.transcriptKey ?? "")}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* ── Sidebar ── */}
-          <div className="space-y-4">
-            <UploadZone onUpload={handleUpload} courses={enrichedCourses} />
-
-            {uploading && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700">Uploading…</div>
-            )}
-            {uploadError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">{uploadError}</div>
-            )}
-
-            {/* Courses drop targets */}
-            <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-semibold text-gray-900 uppercase tracking-wider">Courses</h2>
-                <button onClick={() => setAddingCourse(true)} className="text-xs text-blue-600 hover:text-blue-700 font-medium">+ Add</button>
-              </div>
-
-              <div className="space-y-1">
-                {enrichedCourses.length === 0 && !addingCourse && (
-                  <p className="text-xs text-gray-400 text-center py-3">No courses yet</p>
-                )}
-                {enrichedCourses.map(c => (
-                  <CourseDropTarget
-                    key={c.id}
-                    course={c}
-                    lectureCount={c.lectureCount}
-                    onDrop={handleDropOnCourse}
-                    onRemove={removeCourse}
-                  />
-                ))}
-                {addingCourse && (
-                  <div className="flex gap-2 mt-2 px-1">
-                    <input
-                      autoFocus
-                      value={newCourseName}
-                      onChange={e => setNewCourseName(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") addCourse(); if (e.key === "Escape") setAddingCourse(false); }}
-                      placeholder="Course name..."
-                      className="flex-1 text-sm border border-gray-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button onClick={addCourse} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">Add</button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Trash drop target */}
-            <TrashZone onDrop={handleDropOnTrash} />
-          </div>
-        </div>
-      </div>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap');
+        .glass-card {
+          background: ${isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)"};
+          border: 1px solid ${isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)"};
+          backdrop-filter: blur(16px);
+        }
+      `}</style>
     </div>
   );
 }
