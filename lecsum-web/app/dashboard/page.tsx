@@ -173,8 +173,10 @@ function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLec
           {lectures.length === 0 ? (
             <p className="text-[10px] text-white/25 text-center py-3">No lectures yet</p>
           ) : (
+            
             lectures.map(job => {
               const name = job.displayName ?? cleanName(job.fileName ?? job.uploadKey);
+              
               return (
                 <div
                   key={job.uploadKey}
@@ -825,11 +827,13 @@ export default function DashboardPage() {
             isOpen={!!openCourseId && !isClosing}
             isClosing={isClosing}
             onClose={closeBubble}
-            onClickLecture={job => { closeBubble(); router.push(
-                                                      `/study?key=${encodeURIComponent(job.transcriptKey ?? "")}` +
-                                                      `&course=${encodeURIComponent(job.course ?? "")}` +
-                                                      `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}`
-                                                    ); }}
+            onClickLecture={job => { closeBubble(); const originalExt = (job.fileName ?? job.uploadKey).split(".").pop()?.toLowerCase() ?? ""; router.push(
+                  `/study?key=${encodeURIComponent(job.transcriptKey ?? "")}` +
+                  `&course=${encodeURIComponent(job.course ?? "")}` +
+                  `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}` +
+                  `&name=${encodeURIComponent(job.displayName ?? cleanName(job.fileName ?? job.uploadKey))}`+
+                  `&ext=${encodeURIComponent(originalExt)}`
+                ); }}
           />
 
           {/* Lecture grid */}
@@ -850,11 +854,13 @@ export default function DashboardPage() {
                 <LectureCard
                   key={job.uploadKey} job={job} courses={enrichedCourses} isDark={isDark}
                   onDragStart={handleDragStart} onRename={renameLecture}
-                  onClick={() => router.push(
+                  onClick={() => {const originalExt = (job.fileName ?? job.uploadKey).split(".").pop()?.toLowerCase() ?? ""; router.push(
                                   `/study?key=${encodeURIComponent(job.transcriptKey ?? "")}` +
                                   `&course=${encodeURIComponent(job.course ?? "")}` +
-                                  `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}`
-                                )}
+                                  `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}`+
+                                  `&name=${encodeURIComponent(job.displayName ?? cleanName(job.fileName ?? job.uploadKey))}`+
+                                  `&ext=${encodeURIComponent(originalExt)}`
+                                )}}
                 />
               ))}
             </div>

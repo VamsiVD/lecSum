@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import ReactMarkdown from "react-markdown";
 
 interface Summary {
   tldr: string;
@@ -128,10 +129,10 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
     : [];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "3rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4.5rem" }}>
       {/* TLDR */}
       <section>
-        <div style={{ position: "relative", borderRadius: "1rem", background: `${color}08`, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`, padding: "1.75rem" }}>
+        <div style={{ position: "relative", borderRadius: "1rem", background: `${color}08`, border: `1px solid ${color}30`, borderLeft: `4px solid ${color}`, padding: "2.25rem" }}>
           <div style={{ display: "flex", alignItems: "flex-start", gap: "1.25rem" }}>
             <div style={{ width: 44, height: 44, borderRadius: "50%", background: `${color}20`, color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <BulbIcon />
@@ -148,7 +149,6 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
       <section>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "1.25rem" }}>
           <h4 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#fff", fontFamily: "'DM Serif Display',serif" }}>Key Concepts</h4>
-          <span style={{ fontSize: "0.625rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.15em", color }}>{(data.topics ?? []).join(" · ")}</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "1rem" }}>
           {(data.key_concepts ?? []).map((c, i) => (
@@ -234,7 +234,7 @@ function QuizTab({ transcriptKey, color }: { transcriptKey: string; color: strin
           let border = "rgba(255,255,255,0.1)";
           let clr = "rgba(255,255,255,0.75)";
           if (isAnswered) {
-            if (i === q.correct) { bg = `${color}15`; border = color; clr = "#fff"; }
+            if (i === q.correct) { bg = "rgba(7, 142, 142,0.12)"; border = "#71f871"; clr = "#71f871"; }
             else if (i === selected) { bg = "rgba(248,113,113,0.12)"; border = "#f87171"; clr = "#f87171"; }
           }
           return (
@@ -352,32 +352,60 @@ function TranscriptTab({ transcriptKey, color }: { transcriptKey: string; color:
   useEffect(() => {
     fetch(`/api/transcript?key=${encodeURIComponent(transcriptKey)}`)
       .then(r => r.json())
-      .then(d => setText(d.transcript ?? ""))
+      .then(d => {
+        setText(d.transcript ?? d.text ?? d.content ?? "");
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [transcriptKey]);
 
   if (loading) return <Spinner color={color} />;
 
-  const parts = search
-    ? text.split(new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"))
-    : [text];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      {/* search bar — same as before */}
       <div style={{ position: "relative" }}>
         <svg style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: "rgba(255,255,255,0.25)" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-          <circle cx="11" cy="11" r="7" /><path d="m21 21-4.35-4.35" />
+          <circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>
         </svg>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search transcript…"
           style={{ width: "100%", paddingLeft: 36, paddingRight: 16, paddingTop: 10, paddingBottom: 10, borderRadius: "0.75rem", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.8)", fontSize: "0.875rem", outline: "none" }} />
       </div>
-      <div style={{ fontSize: "0.875rem", color: "rgba(255,255,255,0.6)", lineHeight: 1.8, whiteSpace: "pre-wrap", padding: "1.25rem", borderRadius: "0.75rem", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", maxHeight: "60vh", overflowY: "auto" }}>
-        {parts.map((part, i) =>
-          search && i % 2 === 1
-            ? <mark key={i} style={{ background: `${color}40`, color: "#fff", borderRadius: 3, padding: "0 2px" }}>{part}</mark>
-            : <span key={i}>{part}</span>
-        )}
+
+      {/* markdown content */}
+      <div style={{ padding: "1.5rem 1.75rem", borderRadius: "0.75rem", border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)", maxHeight: "65vh", overflowY: "auto" }}>
+        <ReactMarkdown
+          components={{
+            p: ({ children }) => (
+              <p style={{ color: "rgba(255,255,255,0.65)", lineHeight: 1.85, fontSize: "0.9375rem", marginBottom: "1.25rem" }}>{children}</p>
+            ),
+            h1: ({ children }) => (
+              <h1 style={{ color: "#fff", fontSize: "1.25rem", fontFamily: "'DM Serif Display',serif", marginBottom: "0.75rem", marginTop: "1.5rem" }}>{children}</h1>
+            ),
+            h2: ({ children }) => (
+              <h2 style={{ color: "#fff", fontSize: "1.1rem", fontFamily: "'DM Serif Display',serif", marginBottom: "0.5rem", marginTop: "1.25rem" }}>{children}</h2>
+            ),
+            strong: ({ children }) => (
+              <strong style={{ color, fontWeight: 600 }}>{children}</strong>
+            ),
+            em: ({ children }) => (
+              <em style={{ color: "rgba(255,255,255,0.5)" }}>{children}</em>
+            ),
+            li: ({ children }) => (
+              <li style={{ color: "rgba(255,255,255,0.65)", lineHeight: 1.7, marginBottom: "0.375rem", fontSize: "0.9375rem" }}>{children}</li>
+            ),
+            ul: ({ children }) => (
+              <ul style={{ paddingLeft: "1.25rem", marginBottom: "1rem" }}>{children}</ul>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote style={{ borderLeft: `3px solid ${color}`, paddingLeft: "1rem", color: "rgba(255,255,255,0.45)", margin: "1rem 0" }}>{children}</blockquote>
+            ),
+          }}
+        >
+          {search
+            ? text.replace(new RegExp(`(${search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"), "**$1**")
+            : text}
+        </ReactMarkdown>
       </div>
     </div>
   );
@@ -390,18 +418,21 @@ function StudyContent() {
   const searchParams = useSearchParams();
   const transcriptKey = searchParams.get("key") ?? "";
   const courseId = searchParams.get("course") ?? "";
-  const rawName = transcriptKey.replace(/\.[^.]+$/, "").replace(/^[a-z0-9]+-\d+-/, "").replace(/[-_]/g, " ");
+  const nameParam = searchParams.get("name");
+  const rawName = nameParam
+    ?? transcriptKey.replace(/\.[^.]+$/, "").replace(/^lecsum-job-[a-z0-9]+-?/, "").replace(/[-_]/g, " ").trim();
   const lectureTitle = rawName.charAt(0).toUpperCase() + rawName.slice(1);
-
+  const extParam = searchParams.get("ext")?.toLowerCase() ?? "";
+  const isAudio = ["mp3", "wav", "m4a", "flac", "ogg", "webm", "amr"].includes(extParam);
   const colorParam = searchParams.get("color");
   const [color, setColor] = useState(colorParam ?? "#4ade80");
   const [tab, setTab] = useState<Tab>("summary");
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: "summary", label: "Summary", icon: <SummaryIcon /> },
     { id: "quiz", label: "Quiz", icon: <QuizIcon /> },
     { id: "flashcards", label: "Flashcards", icon: <FlashIcon /> },
-    { id: "transcript", label: "Transcript", icon: <TranscriptIcon /> },
+    { id: "transcript", label: "Transcript", icon: <TranscriptIcon />, disabled: !isAudio },
   ];
 
   useEffect(() => {
@@ -410,11 +441,11 @@ function StudyContent() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#0a0e14", color: "#f1f3fc", fontFamily: "'DM Sans',sans-serif" }}>
-      {/* Background */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
-        <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${color}0d 1px,transparent 1px)`, backgroundSize: "32px 32px" }} />
-        <div style={{ position: "absolute", top: 0, left: 240, right: 0, height: 400, background: `radial-gradient(circle at 50% 0%,${color}14 0%,transparent 70%)` }} />
-      </div>
+    {/* Background */}
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+      <div style={{ position: "absolute", inset: 0, backgroundImage: `radial-gradient(${color}0d 1px,transparent 1px)`, backgroundSize: "32px 32px" }} />
+      <div style={{ position: "absolute", top: 0, left: 240, right: 0, height: 400, background: `radial-gradient(circle at 50% 0%,${color}14 0%,transparent 70%)` }} />
+    </div>
 
       {/* Sidebar */}
       <nav style={{ position: "fixed", left: 0, top: 0, height: "100%", width: 240, display: "flex", flexDirection: "column", padding: "2rem 1rem", zIndex: 50, background: "rgba(10,14,20,0.75)", backdropFilter: "blur(20px)", borderRight: "1px solid rgba(255,255,255,0.06)", boxShadow: `4px 0 24px ${color}0a` }}>
@@ -424,18 +455,37 @@ function StudyContent() {
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", flex: 1 }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.625rem 0.75rem", borderRadius: "0.75rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", border: "none", transition: "all .2s", textAlign: "left",
-                background: tab === t.id ? `${color}15` : "transparent",
-                color: tab === t.id ? color : "rgba(255,255,255,0.4)",
-                borderRight: tab === t.id ? `2px solid ${color}` : "2px solid transparent",
-              }}>
-              <span style={{ color: tab === t.id ? color : "rgba(255,255,255,0.25)" }}>{t.icon}</span>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => !t.disabled && setTab(t.id)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.75rem",
+              padding: "0.625rem 0.75rem",
+              borderRadius: "0.75rem",
+              fontSize: "0.875rem",
+              fontWeight: 500,
+              border: "none",
+              transition: "all .2s",
+              textAlign: "left",
+              background: tab === t.id ? `${color}15` : "transparent",
+              color: tab === t.id ? color : "rgba(255,255,255,0.4)",
+              borderRight: tab === t.id ? `2px solid ${color}` : "2px solid transparent",
+              opacity: t.disabled ? 0.3 : 1,
+              cursor: t.disabled ? "not-allowed" : "pointer",
+              pointerEvents: t.disabled ? "none" : "all",
+            }}
+          >
+            <span style={{ color: tab === t.id ? color : "rgba(255,255,255,0.25)" }}>{t.icon}</span>
               {t.label}
-            </button>
-          ))}
-        </div>
+              {t.disabled && (
+                <span style={{ fontSize: "0.5rem", fontFamily: "monospace", marginLeft: "auto", color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>N/A</span>
+              )}
+          </button>
+        ))}
+      </div>
 
         <button onClick={() => router.push("/dashboard")}
           style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.625rem 1rem", borderRadius: "0.75rem", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)", transition: "color .2s" }}>
@@ -465,7 +515,7 @@ function StudyContent() {
 
       {/* Main */}
       <main style={{ position: "relative", zIndex: 10, marginLeft: 240, paddingTop: 80, paddingBottom: 100, paddingLeft: 48, paddingRight: 48 }}>
-        <div style={{ maxWidth: 1500, margin: "0 auto" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
           {tab === "summary" && <SummaryTab transcriptKey={transcriptKey} color={color} />}
           {tab === "quiz" && <QuizTab transcriptKey={transcriptKey} color={color} />}
           {tab === "flashcards" && <FlashcardsTab transcriptKey={transcriptKey} color={color} />}
