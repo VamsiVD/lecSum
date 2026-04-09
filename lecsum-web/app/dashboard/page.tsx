@@ -161,22 +161,6 @@ function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLec
             : "opacity .32s cubic-bezier(.22,1,.36,1), transform .38s cubic-bezier(.34,1.56,.64,1), filter .28s ease",
         }}
       >
-        {/* header */}
-        <div
-          className="px-3.5 py-3 border-b border-white/8"
-          style={{
-            opacity: isOpen && !isClosing ? 1 : 0,
-            transform: isOpen && !isClosing ? "translateY(0)" : "translateY(4px)",
-            transition: "opacity .2s .15s ease, transform .25s .15s ease",
-          }}
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: course.color, boxShadow: `0 0 6px ${course.color}99` }} />
-            <span className="text-[10px] font-mono text-white/60 tracking-wider">{course.id}</span>
-          </div>
-          <div className="text-sm font-medium text-white leading-tight">{course.name}</div>
-        </div>
-
         {/* lecture list */}
         <div
           className="px-1.5 py-1.5"
@@ -189,8 +173,10 @@ function BubblePanel({ course, jobs, pos, isOpen, isClosing, onClose, onClickLec
           {lectures.length === 0 ? (
             <p className="text-[10px] text-white/25 text-center py-3">No lectures yet</p>
           ) : (
+            
             lectures.map(job => {
               const name = job.displayName ?? cleanName(job.fileName ?? job.uploadKey);
+              
               return (
                 <div
                   key={job.uploadKey}
@@ -412,11 +398,16 @@ function LectureCard({ job, courses, onClick, onDragStart, onRename, isDark }: {
           {statusLabel[job.status] ?? job.status}
         </span>
       </div>
-      {job.status === "done" && (
-        <div className={`flex gap-1 pt-2 border-t ${isDark ? "border-white/8" : "border-black/8"}`}>
-          {["Summary", "Quiz", "Flashcards"].map(t => (
-            <span key={t} className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${isDark ? "text-white/35 bg-white/5 border-white/10" : "text-gray-400 bg-black/4 border-black/8"}`}>{t}</span>
-          ))}
+      {job.status !== "done" && (
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/8">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          <span className="text-[10px] text-white/35 animate-pulse">
+            {job.status === "transcribing" ? "Transcribing audio…"
+              : job.status === "extracting" ? "Extracting content…"
+              : job.status === "uploaded" ? "Queued…"
+              : job.status === "error" ? "Failed"
+              : "Processing…"}
+          </span>
         </div>
       )}
     </div>
@@ -660,9 +651,10 @@ export default function DashboardPage() {
   const handleUpload = async (file: File, course: string) => {
     setUploading(true); setUploadError("");
     try {
+      const key = file.name;
       const hashBuffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
-      const key = file.name;
+
       const res = await fetch("/api/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: key, contentType: file.type || "application/octet-stream", hash }),
@@ -671,13 +663,35 @@ export default function DashboardPage() {
       const { url } = await res.json();
       const up = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
       if (!up.ok) throw new Error("Upload failed");
-      router.push(`/processing?key=${encodeURIComponent(key)}&course=${encodeURIComponent(course)}`);
+
+      // ← stay on dashboard, add optimistic card immediately
+      const optimisticJob: Job = {
+        uploadKey: key,
+        fileName: key,
+        displayName: cleanName(key),
+        status: "transcribing",
+        createdAt: new Date().toISOString(),
+        course: course || undefined,
+      };
+      setJobs(prev => [optimisticJob, ...prev]);
+      const docFormats = new Set(["pdf", "jpg", "jpeg", "png", "tiff"]);
+      const ext = key.split(".").pop()?.toLowerCase() ?? "";
+
+      if (docFormats.has(ext)) {
+        // fire and forget — don't await, let it run in background
+        fetch("/api/extract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uploadKey: key }),
+        }).catch(() => {}); // errors will show up via the poll
+      }
+      setUploading(false);
+
     } catch (e: unknown) {
       setUploadError(e instanceof Error ? e.message : "Upload failed");
       setUploading(false);
     }
   };
-
   const enrichedCourses = courses.map(c => ({ ...c, lectureCount: jobs.filter(j => j.course === c.id).length }));
   const openCourse = enrichedCourses.find(c => c.id === openCourseId) ?? null;
 
@@ -813,7 +827,13 @@ export default function DashboardPage() {
             isOpen={!!openCourseId && !isClosing}
             isClosing={isClosing}
             onClose={closeBubble}
-            onClickLecture={job => { closeBubble(); router.push(`/study?key=${encodeURIComponent(job.transcriptKey ?? "")}`); }}
+            onClickLecture={job => { closeBubble(); const originalExt = (job.fileName ?? job.uploadKey).split(".").pop()?.toLowerCase() ?? ""; router.push(
+                  `/study?key=${encodeURIComponent(job.transcriptKey ?? "")}` +
+                  `&course=${encodeURIComponent(job.course ?? "")}` +
+                  `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}` +
+                  `&name=${encodeURIComponent(job.displayName ?? cleanName(job.fileName ?? job.uploadKey))}`+
+                  `&ext=${encodeURIComponent(originalExt)}`
+                ); }}
           />
 
           {/* Lecture grid */}
@@ -834,7 +854,13 @@ export default function DashboardPage() {
                 <LectureCard
                   key={job.uploadKey} job={job} courses={enrichedCourses} isDark={isDark}
                   onDragStart={handleDragStart} onRename={renameLecture}
-                  onClick={() => router.push(`/study?key=${encodeURIComponent(job.transcriptKey ?? "")}`)}
+                  onClick={() => {const originalExt = (job.fileName ?? job.uploadKey).split(".").pop()?.toLowerCase() ?? ""; router.push(
+                                  `/study?key=${encodeURIComponent(job.transcriptKey ?? "")}` +
+                                  `&course=${encodeURIComponent(job.course ?? "")}` +
+                                  `&color=${encodeURIComponent(enrichedCourses.find(c => c.id === job.course)?.color ?? "#4ade80")}`+
+                                  `&name=${encodeURIComponent(job.displayName ?? cleanName(job.fileName ?? job.uploadKey))}`+
+                                  `&ext=${encodeURIComponent(originalExt)}`
+                                )}}
                 />
               ))}
             </div>

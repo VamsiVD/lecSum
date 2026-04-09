@@ -37,21 +37,21 @@ const bedrock = new BedrockRuntimeClient({
 // Claude 3.5 Haiku on Bedrock — best quality/cost for document extraction
 const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-const EXTRACT_PROMPT = `You are an educational study assistant extracting text from a document page.
+const EXTRACT_PROMPT = `You are extracting content from a document page for a student study assistant.
 
-Your goal is to extract strictly academic and educational content following these rules:
-1. Extract the text, preserving headings and logical structure.
-2. Describe any diagrams, charts, graphs, or figures in detail (explain axis labels, trends, key values). Format as [DIAGRAM: description].
-3. Describe any tables, including all cell values. Format as [TABLE: description].
+Extract the educational content following these rules:
+1. Extract the text, preserving headings and structure.
+2. Describe any diagrams, charts, graphs, or figures in detail — explain what they show, axis labels, trends, key values.
+3. Describe any tables — include all cell values.
 4. Note any mathematical equations or formulas.
 
-CONTENT FILTERING RULES:
-- Focus ONLY on academic and educational material.
-- Completely ignore and silently omit any irrelevant, conversational, or non-educational text.
-- Do not extract or reference any Personally Identifiable Information (PII).
-- If a section contains non-academic slang or inappropriate content, skip that section entirely without generating any placeholders.
+CRITICAL SAFETY INSTRUCTIONS:
+- If you encounter Personally Identifiable Information (PII) such as email addresses, phone numbers, or physical addresses, DO NOT extract them. Replace them with [REDACTED PII].
+- If you encounter profanity, crude slang, or potentially toxic words (even within examples, memes, or quotes), DO NOT extract them. Replace them with [REDACTED SLANG].
 
-Format your response as clean, plain text. A student should be able to study from your output alone.`;
+Format your response as plain text. For diagrams write [DIAGRAM: description]. For tables write [TABLE: description].
+Be thorough — a student should be able to study from your educational output alone without seeing the original.`;
+
 const IMAGE_MIME: Record<string, "image/jpeg" | "image/png" | "image/gif" | "image/webp"> = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
