@@ -346,7 +346,6 @@ function LectureCard({ job, courses, onClick, onDragStart, onRename, isDark }: {
   const [renaming, setRenaming] = useState(false);
   const course = courses.find(c => c.id === job.course);
   const displayName = job.displayName ?? cleanName(job.fileName ?? job.uploadKey);
-
   const statusStyle: Record<string, string> = {
     done: "text-emerald-400 bg-emerald-400/10 border-emerald-400/25",
     transcribing: "text-blue-400 bg-blue-400/10 border-blue-400/25",
@@ -474,6 +473,7 @@ export default function DashboardPage() {
   const [selectedCourse, setSelectedCourse] = useState("");
   const [draggingFile, setDraggingFile] = useState(false);
   const draggingKey = useRef<string | null>(null);
+  const [policyError, setPolicyError] = useState<string | null>(null);
 
   // ── Bubble state ──
   const [openCourseId, setOpenCourseId] = useState<string | null>(null);
@@ -654,7 +654,6 @@ export default function DashboardPage() {
       const key = file.name;
       const hashBuffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
-
       const res = await fetch("/api/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ filename: key, contentType: file.type || "application/octet-stream", hash }),
@@ -678,12 +677,22 @@ export default function DashboardPage() {
       const ext = key.split(".").pop()?.toLowerCase() ?? "";
 
       if (docFormats.has(ext)) {
-        // fire and forget — don't await, let it run in background
         fetch("/api/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uploadKey: key }),
-        }).catch(() => {}); // errors will show up via the poll
+        })
+          .then(async res => {
+            if (!res.ok) {
+              const data = await res.json();
+              // mark job as error and show popup
+              setJobs(prev => prev.map(j => j.uploadKey === key ? { ...j, status: "error" } : j));
+              setPolicyError(data.error ?? "This file could not be processed.");
+            }
+          })
+          .catch(() => {
+            setJobs(prev => prev.map(j => j.uploadKey === key ? { ...j, status: "error" } : j));
+          });
       }
       setUploading(false);
 
@@ -945,6 +954,55 @@ export default function DashboardPage() {
           onConfirm={confirmDelete}
           onCancel={() => setDeleteTarget(null)}
         />
+      )}
+      {policyError && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(6px)", display: "flex", alignItems: "center",
+          justifyContent: "center", zIndex: 100,
+        }}>
+          <div style={{
+            background: "rgba(20,14,14,0.95)", border: "1px solid rgba(248,113,113,0.25)",
+            borderRadius: "1rem", padding: "2rem", maxWidth: 420, width: "90%",
+            boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+              <div style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(248,113,113,0.15)", border: "1px solid rgba(248,113,113,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth={2}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+              </div>
+              <div>
+                <p style={{ color: "#f87171", fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.125rem" }}>File blocked by AWS policy</p>
+                <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.75rem" }}>This file could not be extracted</p>
+              </div>
+            </div>
+            <p style={{ color: "rgba(255,255,255,0.55)", fontSize: "0.8125rem", lineHeight: 1.6, marginBottom: "1.5rem", padding: "0.75rem", borderRadius: "0.5rem", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", fontFamily: "monospace", wordBreak: "break-all" }}>
+              {policyError.length > 200 ? policyError.slice(0, 200) + "…" : policyError}
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem" }}>
+              <button
+                onClick={() => setPolicyError(null)}
+                style={{ flex: 1, padding: "0.625rem", borderRadius: "0.75rem", border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.6)", fontSize: "0.8125rem", cursor: "pointer" }}>
+                Dismiss
+              </button>
+              <button
+                onClick={() => {
+                  setPolicyError(null);
+                  const erroredJob = jobs.find(j => j.status === "error");
+                  if (erroredJob) {
+                    setJobs(prev => prev.filter(j => j.uploadKey !== erroredJob.uploadKey));
+                    fetch(`/api/lectures/${encodeURIComponent(erroredJob.uploadKey)}`, { method: "DELETE" }).catch(() => {});
+                  }
+                }}
+                style={{ flex: 1, padding: "0.625rem", borderRadius: "0.75rem", border: "1px solid rgba(248,113,113,0.3)", background: "rgba(248,113,113,0.08)", color: "#f87171", fontSize: "0.8125rem", cursor: "pointer" }}>
+                Remove file
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <style>{`
