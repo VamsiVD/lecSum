@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from "@aws-sdk/client-dynamodb";
+import { auth } from "@clerk/nextjs/server";
 
 const dynamo = new DynamoDBClient({
   region: process.env.AWS_REGION!,
@@ -10,25 +11,46 @@ const dynamo = new DynamoDBClient({
 });
 
 export async function GET(req: NextRequest) {
+  const uploadKey = req.nextUrl.searchParams.get("uploadKey");
+  const course = req.nextUrl.searchParams.get("course");
+
+  if (!uploadKey) {
+    return NextResponse.json({ error: "Missing uploadKey" }, { status: 400 });
+  }
+
   try {
-    const uploadKey = req.nextUrl.searchParams.get("uploadKey");
-    if (!uploadKey) return NextResponse.json({ error: "Missing uploadKey" }, { status: 400 });
-    const course = req.nextUrl.searchParams.get("course"); // ← read from query
-    if (course) {
-      await dynamo.send(new UpdateItemCommand({
-        TableName: "lecsum-jobs",
-        Key: { uploadKey: { S: uploadKey! } },
-        UpdateExpression: "SET course = :c",
-        ExpressionAttributeValues: { ":c": { S: course } },
-      })).catch(() => { }); // non-blocking
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // write userId + course on first poll (non-blocking)
+    const updates: string[] = ["userId = :uid"];
+    const values: Record<string, { S: string }> = { ":uid": { S: userId } };
+
+    if (course) {
+      updates.push("course = :c");
+      values[":c"] = { S: course };
+    }
+
+    await dynamo.send(new UpdateItemCommand({
+      TableName: "lecsum-jobs",
+      Key: { uploadKey: { S: uploadKey } },
+      UpdateExpression: `SET ${updates.join(", ")}`,
+      ExpressionAttributeValues: values,
+      // only update if item exists
+      ConditionExpression: "attribute_exists(uploadKey)",
+    })).catch(() => { }); // non-blocking — ignore if item doesn't exist yet
+
     const result = await dynamo.send(new GetItemCommand({
       TableName: "lecsum-jobs",
       Key: { uploadKey: { S: uploadKey } },
     }));
 
     const item = result.Item;
-    if (!item) return NextResponse.json({ status: "pending" });
+    if (!item) {
+      return NextResponse.json({ status: "pending" });
+    }
 
     return NextResponse.json({
       status: item.status?.S,
@@ -36,6 +58,7 @@ export async function GET(req: NextRequest) {
       transcriptKey: item.transcriptKey?.S,
       fileName: item.fileName?.S,
       createdAt: item.createdAt?.S,
+      course: item.course?.S,
     });
   } catch (err) {
     console.error("job-status error:", err);

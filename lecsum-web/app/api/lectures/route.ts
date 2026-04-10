@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { auth } from "@clerk/nextjs/server";
 
 const dynamo = new DynamoDBClient({
   region: process.env.AWS_REGION!,
@@ -11,23 +12,34 @@ const dynamo = new DynamoDBClient({
 
 export async function GET() {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const result = await dynamo.send(
-      new ScanCommand({ TableName: "lecsum-jobs" })
+      new ScanCommand({
+        TableName: "lecsum-jobs",
+        FilterExpression: "userId = :uid AND NOT begins_with(uploadKey, :courses)",
+        ExpressionAttributeValues: {
+          ":uid": { S: userId },
+          ":courses": { S: "courses" },
+        },
+      })
     );
 
     const lectures = (result.Items ?? [])
-      // 1. Filter out the global courses record so it doesn't show up in the UI
-      .filter((item) => item.uploadKey?.S !== "courses")
-      .map((item) => ({
+      .filter(item => item.uploadKey?.S !== "courses") // exclude courses record
+      .map(item => ({
         uploadKey: item.uploadKey?.S ?? "",
         jobName: item.jobName?.S,
         transcriptKey: item.transcriptKey?.S,
         fileName: item.fileName?.S,
-        // 2. Added displayName so your frontend gets the renamed values!
         displayName: item.displayName?.S,
         status: item.status?.S ?? "pending",
         createdAt: item.createdAt?.S,
         course: item.course?.S,
+        userId: item.userId?.S,
       }))
       .sort((a, b) => {
         if (!a.createdAt) return 1;

@@ -69,6 +69,12 @@ export default function SignInPage() {
             },
           }}
         />
+        <p style={{ fontSize: "0.8125rem", color: "rgba(255,255,255,0.4)" }}>
+          Don't have an account?{" "}
+          <a href="/sign-up" style={{ color: "#4ade80", fontWeight: 500, textDecoration: "none" }}>
+            Sign up
+          </a>
+        </p>
       </div>
 
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&display=swap');`}</style>
