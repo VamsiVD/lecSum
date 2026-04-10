@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { auth } from "@clerk/nextjs/server";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -11,16 +12,18 @@ const s3 = new S3Client({
 });
 
 const ALLOWED_EXTENSIONS = new Set([
-  // Audio
   "mp3", "wav", "m4a", "flac", "ogg", "webm", "amr",
-  // Documents
   "pdf", "docx", "pptx",
-  // Images
   "jpg", "jpeg", "png", "tiff",
 ]);
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { filename, contentType } = await req.json();
 
     if (!filename) {
@@ -35,14 +38,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // prefix with userId — isolates each user's files in S3
+    const key = `${userId}/${filename}`;
+
     const command = new PutObjectCommand({
       Bucket: process.env.S3_UPLOAD_BUCKET!,
-      Key: filename,
+      Key: key,
       ContentType: contentType || "application/octet-stream",
     });
 
     const url = await getSignedUrl(s3, command, { expiresIn: 300 });
-    return NextResponse.json({ url, key: filename });
+    return NextResponse.json({ url, key });
   } catch (err) {
     console.error("Upload URL error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
