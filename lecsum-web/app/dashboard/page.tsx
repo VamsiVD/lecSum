@@ -13,6 +13,69 @@ import { CourseManager } from "./components/CourseManager";
 import { DeleteModal } from "./components/DeleteModal";
 import { PolicyErrorModal } from "./components/PolicyErrorModal";
 
+import {
+  BadgeCheckIcon, BellIcon, CreditCardIcon, LogOutIcon,
+} from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuGroup,
+  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
+function AccountMenu({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="rounded-full h-8 w-8 flex items-center justify-center outline-none cursor-pointer">
+        <Avatar className="h-12 w-12">
+          <AvatarImage src="https://github.com/shadcn.png" alt="VD" />
+          <AvatarFallback className="text-[10px] bg-gradient-to-br from-green-400 to-green-700 text-white border-0">
+            VD
+          </AvatarFallback>
+        </Avatar>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        side="top"
+        className={isDark ? "bg-[#0d1512] border-white/10 text-white" : ""}
+      >
+        <DropdownMenuGroup>
+          <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
+            <BadgeCheckIcon className="mr-2 h-4 w-4" />
+            Account
+          </DropdownMenuItem>
+          <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
+            <CreditCardIcon className="mr-2 h-4 w-4" />
+            Billing
+          </DropdownMenuItem>
+          <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
+            <BellIcon className="mr-2 h-4 w-4" />
+            Notifications
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator className={isDark ? "bg-white/8" : ""} />
+
+        {/* Dark mode toggle */}
+        <DropdownMenuItem
+          onClick={onToggleTheme}
+          className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}
+        >
+          {isDark
+            ? <><svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Light mode</>
+            : <><svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>Dark mode</>
+          }
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator className={isDark ? "bg-white/8" : ""} />
+        <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-red-400 text-white/70" : "focus:text-red-600"}>
+          <LogOutIcon className="mr-2 h-4 w-4" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -56,8 +119,11 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchCourses();
     const theme = localStorage.getItem("lecsum-theme");
-    if (theme) setIsDark(theme === "dark");
-  }, [fetchCourses]);
+    const dark = theme !== "light";
+    setIsDark(dark);
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.classList.toggle("light", !dark);
+}, [fetchCourses]);
 
   // ── Fetch jobs ──
   const fetchJobs = useCallback(async () => {
@@ -77,10 +143,23 @@ export default function DashboardPage() {
 
   // ── Theme ──
   const toggleTheme = () => {
-    const next = !isDark;
+  const next = !isDark;
+
+  const applyTheme = () => {
     setIsDark(next);
     localStorage.setItem("lecsum-theme", next ? "dark" : "light");
+    // apply class to html element so CSS can target it
+    document.documentElement.classList.toggle("dark", next);
+    document.documentElement.classList.toggle("light", !next);
   };
+
+  if (!document.startViewTransition) {
+    applyTheme();
+    return;
+  }
+
+  document.startViewTransition(applyTheme);
+};
 
   // ── Courses ──
   const saveCourses = async (updated: Course[]) => {
@@ -306,7 +385,9 @@ export default function DashboardPage() {
           }}
         />
       </div>
-
+        <div className="fixed bottom-5 left-4 z-50">
+          <AccountMenu isDark={isDark} onToggleTheme={toggleTheme} />
+      </div>
       <div className="relative z-10 flex min-h-screen">
         {/* Main */}
         <div ref={mainRef} className="flex-1 min-w-0 p-5 overflow-hidden relative">
@@ -319,14 +400,9 @@ export default function DashboardPage() {
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className={`bg-transparent outline-none text-xs w-28 ${T.textMuted}`} />
                 <span className={`text-[9px] font-mono border rounded px-1 py-0.5 ${T.kbd}`}>Ctrl+K</span>
               </div>
-              <button onClick={toggleTheme} className="flex items-center gap-2">
-                <div className={`w-9 h-5 rounded-full relative transition-colors duration-300 ${T.toggleTrack}`}>
-                  <div className={`absolute top-0.5 w-4 h-4 rounded-full transition-transform duration-300 shadow ${T.toggleThumb}`} />
-                </div>
-                <span className="text-sm">{isDark ? "🌙" : "☀️"}</span>
-              </button>
             </div>
           </div>
+          
 
           {/* Filter tabs */}
           <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1">
@@ -462,6 +538,33 @@ export default function DashboardPage() {
           background: ${isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)"};
           border: 1px solid ${isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)"};
           backdrop-filter: blur(16px);
+        }
+      `}</style>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
+
+        .glass-card {
+          background: ${isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.6)"};
+          border: 1px solid ${isDark ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.08)"};
+          backdrop-filter: blur(16px);
+        }
+
+        /* ── Theme transition — radial reveal from bottom-left ── */
+        ::view-transition-old(root),
+        ::view-transition-new(root) {
+          animation: none;
+          mix-blend-mode: normal;
+        }
+
+        ::view-transition-new(root) {
+          clip-path: circle(0% at 0% 100%);
+          animation: theme-reveal 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        @keyframes theme-reveal {
+          from { clip-path: circle(0% at 0% 100%); }
+          to   { clip-path: circle(150% at 0% 100%); }
         }
       `}</style>
     </div>

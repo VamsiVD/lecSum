@@ -115,15 +115,38 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  ::view-transition-new(root) {
+    clip-path: circle(0% at 0% 100%);
+    animation: theme-reveal .55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  @keyframes theme-reveal {
+    from {
+      clip-path: circle(0% at 0% 100%);
+    }
+
+    to {
+      clip-path: circle(150% at 0% 100%);
+    }
+  }
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }
