@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Course, Job, courseGradient } from "./types";
 import { RenameInput } from "./Renameinput";
 
@@ -13,26 +13,88 @@ interface CourseCardProps {
   onRemove: (id: string) => void;
   jobs: Job[];
   onDropLecture: (courseId: string) => void;
+  onReorder: (dragId: string, dropId: string) => void;
+  draggingCourseId: React.MutableRefObject<string | null>;
   isDark: boolean;
 }
 
-export function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemove, jobs, onDropLecture, isDark }: CourseCardProps) {
+export function CourseCard({
+  course, isOpen, cardRef, onClick, onRename, onRemove,
+  jobs, onDropLecture, onReorder, draggingCourseId, isDark,
+}: CourseCardProps) {
   const [renaming, setRenaming] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
+  const [isLectureDragOver, setIsLectureDragOver] = useState(false);
+  const [isReorderOver, setIsReorderOver] = useState(false);
+  const divRef = useRef<HTMLDivElement | null>(null);
+
   const lectures = jobs.filter(j => j.course === course.id);
   const ready = lectures.filter(j => j.status === "done").length;
 
+  const isDragOver = isLectureDragOver || isReorderOver;
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.stopPropagation();
+    draggingCourseId.current = course.id;
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("courseId", course.id);
+    // ghost the card
+    setTimeout(() => {
+      if (divRef.current) divRef.current.style.opacity = "0.4";
+    }, 0);
+  };
+
+  const handleDragEnd = () => {
+    draggingCourseId.current = null;
+    if (divRef.current) divRef.current.style.opacity = "1";
+    setIsReorderOver(false);
+    setIsLectureDragOver(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    // course reorder vs lecture drop
+    if (draggingCourseId.current && draggingCourseId.current !== course.id) {
+      setIsReorderOver(true);
+      setIsLectureDragOver(false);
+    } else if (!draggingCourseId.current) {
+      setIsLectureDragOver(true);
+      setIsReorderOver(false);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setIsLectureDragOver(false);
+    setIsReorderOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggingCourseId.current && draggingCourseId.current !== course.id) {
+      onReorder(draggingCourseId.current, course.id);
+      draggingCourseId.current = null;
+    } else if (!draggingCourseId.current) {
+      onDropLecture(course.id);
+    }
+    setIsLectureDragOver(false);
+    setIsReorderOver(false);
+  };
+
   return (
     <div
-      ref={cardRef}
+      ref={el => { divRef.current = el; cardRef(el); }}
+      draggable
       onClick={onClick}
-      onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-      onDragLeave={() => setIsDragOver(false)}
-      onDrop={e => { e.preventDefault(); setIsDragOver(false); onDropLecture(course.id); }}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className="relative rounded-2xl overflow-hidden border cursor-pointer select-none group"
       style={{
         height: 152,
-        borderColor: isDragOver
+        borderColor: isReorderOver
+          ? "rgba(255,255,255,0.6)"
+          : isLectureDragOver
           ? course.color
           : isOpen
           ? isDark ? "rgba(255,255,255,0.32)" : "rgba(0,0,0,0.2)"
@@ -42,15 +104,25 @@ export function CourseCard({ course, isOpen, cardRef, onClick, onRename, onRemov
           : isOpen
           ? "translateY(-4px) scale(1.015)"
           : "translateY(0) scale(1)",
-        boxShadow: isDragOver
+        boxShadow: isReorderOver
+          ? "0 0 0 2px rgba(255,255,255,0.4), 0 12px 40px rgba(0,0,0,0.4)"
+          : isLectureDragOver
           ? `0 0 20px ${course.color}40`
           : isOpen
           ? isDark ? "0 20px 50px rgba(0,0,0,.55)" : "0 20px 50px rgba(0,0,0,.15)"
           : "none",
-        transition: "border-color .3s, transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .3s",
+        transition: "border-color .2s, transform .35s cubic-bezier(.34,1.56,.64,1), box-shadow .2s, opacity .2s",
         background: isDark ? "transparent" : "#ffffff",
       }}
     >
+      {/* Reorder indicator — top border flash */}
+      {isReorderOver && (
+        <div
+          className="absolute top-0 inset-x-0 h-1 z-20 rounded-t-2xl"
+          style={{ background: "rgba(255,255,255,0.7)" }}
+        />
+      )}
+
       {/* Gradient background */}
       <div className="absolute inset-0" style={{
         background: isDark

@@ -41,6 +41,7 @@ export default function DashboardPage() {
   const mainRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const draggingKey = useRef<string | null>(null);
+  const draggingCourseId = useRef<string | null>(null);
 
   // ── Fetch courses ──
   const fetchCourses = useCallback(async () => {
@@ -111,6 +112,16 @@ export default function DashboardPage() {
 
   const removeCourse = async (id: string) => {
     await saveCourses(courses.filter(c => c.id !== id));
+  };
+
+  const handleReorderCourse = async (dragId: string, dropId: string) => {
+    const from = courses.findIndex(c => c.id === dragId);
+    const to = courses.findIndex(c => c.id === dropId);
+    if (from === -1 || to === -1) return;
+    const reordered = [...courses];
+    const [moved] = reordered.splice(from, 1);
+    reordered.splice(to, 0, moved);
+    await saveCourses(reordered);
   };
 
   // ── Lectures ──
@@ -360,6 +371,8 @@ export default function DashboardPage() {
                     onRemove={removeCourse}
                     jobs={jobs}
                     onDropLecture={handleDropOnCourse}
+                    onReorder={handleReorderCourse}
+                    draggingCourseId={draggingCourseId}
                     isDark={isDark}
                   />
                 ))}
