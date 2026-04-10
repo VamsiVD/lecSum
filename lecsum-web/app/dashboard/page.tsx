@@ -23,7 +23,12 @@ import {
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { useUser, useClerk } from "@clerk/nextjs";
+
 function AccountMenu({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme: () => void }) {
+  const { user } = useUser();
+  const { signOut, openUserProfile } = useClerk();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-full h-8 w-8 flex items-center justify-center outline-none cursor-pointer">
@@ -34,32 +39,33 @@ function AccountMenu({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme
           </AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        side="top"
-        className={isDark ? "bg-[#0d1512] border-white/10 text-white" : ""}
-      >
+      <DropdownMenuContent align="end" side="top" className={isDark ? "bg-[#0d1512] border-white/10 text-white" : ""}>
+        
+        {/* User info */}
+        <div className={`px-2 py-1.5 border-b mb-1 ${isDark ? "border-white/8" : "border-black/8"}`}>
+          <p className={`text-xs font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+            {user?.fullName}
+          </p>
+          <p className={`text-[10px] ${isDark ? "text-white/40" : "text-gray-400"}`}>
+            {user?.primaryEmailAddress?.emailAddress}
+          </p>
+        </div>
+
         <DropdownMenuGroup>
-          <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
+          <DropdownMenuItem onClick={() => openUserProfile()} className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
             <BadgeCheckIcon className="mr-2 h-4 w-4" />
             Account
-          </DropdownMenuItem>
-          <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
-            <CreditCardIcon className="mr-2 h-4 w-4" />
-            Billing
           </DropdownMenuItem>
           <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
             <BellIcon className="mr-2 h-4 w-4" />
             Notifications
           </DropdownMenuItem>
         </DropdownMenuGroup>
+
         <DropdownMenuSeparator className={isDark ? "bg-white/8" : ""} />
 
         {/* Dark mode toggle */}
-        <DropdownMenuItem
-          onClick={onToggleTheme}
-          className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}
-        >
+        <DropdownMenuItem onClick={onToggleTheme} className={isDark ? "focus:bg-white/8 focus:text-white text-white/70" : ""}>
           {isDark
             ? <><svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>Light mode</>
             : <><svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>Dark mode</>
@@ -67,7 +73,11 @@ function AccountMenu({ isDark, onToggleTheme }: { isDark: boolean; onToggleTheme
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className={isDark ? "bg-white/8" : ""} />
-        <DropdownMenuItem className={isDark ? "focus:bg-white/8 focus:text-red-400 text-white/70" : "focus:text-red-600"}>
+
+        <DropdownMenuItem
+          onClick={() => signOut({ redirectUrl: "/sign-in" })}
+          className={isDark ? "focus:bg-white/8 focus:text-red-400 text-white/70" : "focus:text-red-600"}
+        >
           <LogOutIcon className="mr-2 h-4 w-4" />
           Sign Out
         </DropdownMenuItem>

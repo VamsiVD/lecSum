@@ -23,17 +23,14 @@ export const metadata: Metadata = {
   description: "Turn lectures into study materials",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+import { ClerkProvider } from "@clerk/nextjs";
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${roboto.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
-    </html>
+    <ClerkProvider>
+      <html lang="en" className={`${roboto.variable} h-full antialiased`}>
+        <body className="min-h-full flex flex-col">{children}</body>
+      </html>
+    </ClerkProvider>
   );
 }
