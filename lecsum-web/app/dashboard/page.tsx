@@ -308,20 +308,6 @@ export default function DashboardPage() {
       </div>
 
       <div className="relative z-10 flex min-h-screen">
-        {/* Rail */}
-        <div className={`w-12 flex-shrink-0 flex flex-col items-center py-3 gap-1 border-r backdrop-blur-xl ${T.rail}`}>
-          {[
-            <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
-            <><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></>,
-            <><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></>,
-          ].map((icon, i) => (
-            <button key={i} className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${i === 0 ? T.railActive : T.railIcon}`}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>{icon}</svg>
-            </button>
-          ))}
-          <div className="mt-auto mb-2 w-7 h-7 rounded-full bg-gradient-to-br from-green-400 to-green-700 flex items-center justify-center text-white text-[10px] font-medium border border-white/20">VD</div>
-        </div>
-
         {/* Main */}
         <div ref={mainRef} className="flex-1 min-w-0 p-5 overflow-hidden relative">
           {/* Topbar */}
