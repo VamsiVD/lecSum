@@ -20,8 +20,11 @@ export async function GET() {
     const result = await dynamo.send(
       new ScanCommand({
         TableName: "lecsum-jobs",
-        FilterExpression: "userId = :uid",
-        ExpressionAttributeValues: { ":uid": { S: userId } },
+        FilterExpression: "userId = :uid AND NOT begins_with(uploadKey, :courses)",
+        ExpressionAttributeValues: {
+          ":uid": { S: userId },
+          ":courses": { S: "courses" },
+        },
       })
     );
 

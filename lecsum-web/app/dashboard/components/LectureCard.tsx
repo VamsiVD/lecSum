@@ -14,11 +14,12 @@ const statusStyle: Record<string, string> = {
 
 const statusLabel: Record<string, string> = {
   done: "Ready", transcribing: "Processing", extracting: "Extracting",
+  uploading: "Uploading",  // ← add
   error: "Failed", uploaded: "Queued", pending: "Pending",
 };
 
 const statusMessage: Record<string, string> = {
-  transcribing: "Transcribing audio…",
+  uploading: "Uploading…",  // ← add
   extracting: "Extracting content…",
   uploaded: "Queued…",
   error: "Failed",

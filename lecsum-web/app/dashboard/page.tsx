@@ -136,12 +136,19 @@ export default function DashboardPage() {
 }, [fetchCourses]);
 
   // ── Fetch jobs ──
-  const fetchJobs = useCallback(async () => {
+const fetchJobs = useCallback(async () => {
     try {
       const res = await fetch("/api/lectures");
       if (!res.ok) return;
       const data = await res.json();
-      setJobs(data.lectures ?? []);
+      const fetched: Job[] = data.lectures ?? [];
+      
+      // keep optimistic jobs that haven't appeared in DynamoDB yet
+      setJobs(prev => {
+        const fetchedKeys = new Set(fetched.map(j => j.uploadKey));
+        const optimistic = prev.filter(j => !fetchedKeys.has(j.uploadKey));
+        return [...fetched, ...optimistic];
+      });
     } catch { } finally { setLoading(false); }
   }, []);
 
@@ -292,30 +299,37 @@ export default function DashboardPage() {
   const handleUpload = async (file: File, course: string) => {
     setUploading(true); setUploadError("");
     try {
-      const key = file.name;
       const hashBuffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+
       const res = await fetch("/api/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: key, contentType: file.type || "application/octet-stream", hash }),
+        body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", hash }),
       });
       if (!res.ok) throw new Error("Failed to get upload URL");
-      const { url } = await res.json();
+      const { url, key } = await res.json(); // ← key now comes back as userId/filename
+      
       const up = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
       if (!up.ok) throw new Error("Upload failed");
 
       const optimisticJob: Job = {
-        uploadKey: key, fileName: key, displayName: cleanName(key),
-        status: "transcribing", createdAt: new Date().toISOString(), course: course || undefined,
+        uploadKey: key,        // ← use key from API response, not file.name
+        fileName: file.name,   // ← display name stays as original filename
+        displayName: cleanName(file.name),
+        status: "transcribing",
+        createdAt: new Date().toISOString(),
+        course: course || undefined,
       };
       setJobs(prev => [optimisticJob, ...prev]);
 
       const docFormats = new Set(["pdf", "jpg", "jpeg", "png", "tiff"]);
-      const ext = key.split(".").pop()?.toLowerCase() ?? "";
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+
       if (docFormats.has(ext)) {
         fetch("/api/extract", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uploadKey: key }),
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uploadKey: key }), // ← use prefixed key
         }).then(async r => {
           if (!r.ok) {
             const data = await r.json();

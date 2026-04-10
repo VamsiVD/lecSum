@@ -13,49 +13,46 @@ const dynamo = new DynamoDBClient({
   },
 });
 
-// Courses are stored as a single DynamoDB item:
-// { pk: "courses", data: "[{id,name,color,lectureCount}...]" }
+import { auth } from "@clerk/nextjs/server";
+
 const TABLE = "lecsum-jobs";
-const PK = "courses";
 
 export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const PK = `courses:${userId}`;  // ← per-user key
+
   try {
-    const result = await dynamo.send(
-      new GetItemCommand({
-        TableName: TABLE,
-        Key: { uploadKey: { S: PK } },
-      })
-    );
-
-    if (!result.Item?.data?.S) {
-      return NextResponse.json({ courses: [] });
-    }
-
-    const courses = JSON.parse(result.Item.data.S);
-    return NextResponse.json({ courses });
+    const result = await dynamo.send(new GetItemCommand({
+      TableName: TABLE,
+      Key: { uploadKey: { S: PK } },
+    }));
+    if (!result.Item?.data?.S) return NextResponse.json({ courses: [] });
+    return NextResponse.json({ courses: JSON.parse(result.Item.data.S) });
   } catch (err) {
-    console.error("Courses GET error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const PK = `courses:${userId}`;  // ← per-user key
+  const { courses } = await req.json();
+
   try {
-    const { courses } = await req.json();
-
-    await dynamo.send(
-      new PutItemCommand({
-        TableName: TABLE,
-        Item: {
-          uploadKey: { S: PK },
-          data: { S: JSON.stringify(courses) },
-        },
-      })
-    );
-
+    await dynamo.send(new PutItemCommand({
+      TableName: TABLE,
+      Item: {
+        uploadKey: { S: PK },
+        data: { S: JSON.stringify(courses) },
+        userId: { S: userId },
+      },
+    }));
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Courses POST error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
 }
