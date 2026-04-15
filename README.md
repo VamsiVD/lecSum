@@ -179,7 +179,7 @@ ruff format lambdas/
 - [x] Dark / light theme toggle
 - [x] Editorial study page with course color theming
 - [x] Courses persisted in DynamoDB
-- [ ] Auth (Clerk)
+- [x] Auth (Clerk)
 - [ ] DOCX / PPTX native support (currently: convert to PDF)
 - [ ] Anki .apkg export
 - [ ] Bookmark and PDF export on study page
