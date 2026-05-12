@@ -1,18 +1,16 @@
-name: Deploy
-
-on:
-  push:
-    branches: [staging, main]
-
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./lecsum-web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
           cache: 'npm'
+          cache-dependency-path: './lecsum-web/package-lock.json'
       - run: npm ci
       - run: npm run test:run
       - run: npm run build
@@ -21,6 +19,9 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./lecsum-web
     steps:
       - uses: actions/checkout@v4
       - name: Deploy to Vercel (staging)
@@ -34,6 +35,9 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./lecsum-web
     environment:
       name: production
       url: https://lecsum.vercel.app
@@ -46,26 +50,3 @@ jobs:
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           prod: true
-
-  notify:
-    needs: [deploy-staging, deploy-production]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify Slack
-        uses: slackapi/slack-github-action@v1
-        with:
-          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
-          payload: |
-            {
-              "text": "Lecsum deployment ${{ job.status }}",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "*Lecsum Deployment*\nBranch: ${{ github.ref_name }}\nStatus: ${{ job.status }}\nCommit: ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
