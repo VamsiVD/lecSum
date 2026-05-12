@@ -1,106 +1,73 @@
-name: Deploy Lecsum
+name: Deploy
 
 on:
   push:
-    branches:
-      - main        # deploys to prod
-      - staging     # deploys to staging
-  pull_request:
-    branches:
-      - main        # runs tests only, no deploy
-
-env:
-  AWS_REGION: us-east-2
-  PYTHON_VERSION: "3.14"
+    branches: [staging, main]
 
 jobs:
-  # ── 1. TEST ────────────────────────────────────────────────────────────────
   test:
-    name: Run tests
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          node-version: '20.x'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:run
+      - run: npm run build
 
-      - name: Install dependencies
-        run: |
-          pip install -r requirements-dev.txt
-
-      - name: Run unit tests
-        run: |
-          pytest tests/unit/ -v --tb=short
-
-      - name: Run linter
-        run: |
-          ruff check lambdas/
-
-      - name: Check formatting
-        run: |
-          ruff format --check lambdas/
-
-  # ── 2. DEPLOY TO STAGING ───────────────────────────────────────────────────
   deploy-staging:
-    name: Deploy → staging
     needs: test
-    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/staging'
-    environment: staging
-
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Deploy to Vercel (staging)
+        uses: vercel/action@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Package and deploy Lambdas
-        run: |
-          bash scripts/deploy.sh staging
-
-      # - name: Run smoke tests against staging
-      #  run: |
-      #    pytest tests/integration/ -v --env=staging
-
-  # ── 3. DEPLOY TO PROD ─────────────────────────────────────────────────────
-  deploy-prod:
-    name: Deploy → prod
+  deploy-production:
     needs: test
-    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    environment: prod          # requires manual approval in GitHub UI
-
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://lecsum.vercel.app
     steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel (production)
+        uses: vercel/action@v4
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+          prod: true
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+  notify:
+    needs: [deploy-staging, deploy-production]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Package and deploy Lambdas
-        run: |
-          bash scripts/deploy.sh prod
-
-      - name: Run smoke tests against prod
-        run: |
-          pytest tests/integration/ -v --env=prod
+          webhook-url: ${{ secrets.SLACK_WEBHOOK }}
+          payload: |
+            {
+              "text": "Lecsum deployment ${{ job.status }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Lecsum Deployment*\nBranch: ${{ github.ref_name }}\nStatus: ${{ job.status }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
