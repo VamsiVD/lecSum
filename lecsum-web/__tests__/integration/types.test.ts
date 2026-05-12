@@ -4,7 +4,7 @@ import { cleanName, timeAgo, courseGradient, COURSE_COLORS } from '@/app/dashboa
 describe('types utilities', () => {
   describe('cleanName', () => {
     it('removes timestamp prefix from filename', () => {
-      expect(cleanName('user123-1234567890-lecture.pdf')).toBe('lecture.pdf');
+      expect(cleanName('user123-1234567890-lecture.pdf')).toBe('lecture');
     });
 
     it('removes extension', () => {
@@ -16,7 +16,7 @@ describe('types utilities', () => {
     });
 
     it('preserves hyphens in filename', () => {
-      expect(cleanName('user-123-my-lecture-file.pdf')).toBe('my-lecture-file.pdf');
+      expect(cleanName('user-123-my-lecture-file.pdf')).toBe('my-lecture-file');
     });
   });
 
