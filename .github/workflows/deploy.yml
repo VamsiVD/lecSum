@@ -9,14 +9,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          node-version: 24.x
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.x
-          cache: 'npm'
-        with:
-          node-version: '20.x'
+          node-version: '22.x'
           cache: 'npm'
       - run: npm ci
       - run: npm run test:run
@@ -34,7 +29,6 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          scope: ${{ secrets.VERCEL_ORG_ID }}
 
   deploy-production:
     needs: test
@@ -51,7 +45,6 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          scope: ${{ secrets.VERCEL_ORG_ID }}
           prod: true
 
   notify:
