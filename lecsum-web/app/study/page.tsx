@@ -51,15 +51,7 @@ function BookmarkIcon() {
   );
 }
 
-function ExportIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
-  );
-}
+
 
 function SummaryIcon() {
   return (
@@ -139,7 +131,7 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
             </div>
             <div>
               <p style={{ fontSize: "0.625rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.2em", color, marginBottom: "0.5rem" }}>TLDR</p>
-              <p style={{ fontSize: "1.1rem", lineHeight: 1.6, color: "rgba(255,255,255,0.9)", fontFamily: "'DM Serif Display',serif" }}>{data.tldr}</p>
+              <p style={{ fontSize: "1.3rem", lineHeight: 1.6, color: "rgba(255,255,255,0.9)", fontFamily: "'DM Serif Display',serif" }}>{data.tldr}</p>
             </div>
           </div>
         </div>
@@ -154,7 +146,7 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
           {(data.key_concepts ?? []).map((c, i) => (
             <div key={i} style={{ padding: "1.25rem", borderRadius: "0.75rem", background: "rgba(255,255,255,0.03)", border: `1px solid ${color}20`, borderBottom: `2px solid ${color}40`, cursor: "default" }}>
               <div style={{ fontSize: "1.5rem", color, marginBottom: "0.75rem", lineHeight: 1 }}>{conceptSymbols[i % conceptSymbols.length]}</div>
-              <p style={{ fontSize: "0.8125rem", fontWeight: 600, color: "rgba(255,255,255,0.9)", lineHeight: 1.4 }}>{c}</p>
+              <p style={{ fontSize: "0.9375rem", fontWeight: 600, color: "rgba(255,255,255,0.9)", lineHeight: 1.4 }}>{c}</p>
             </div>
           ))}
         </div>
@@ -165,7 +157,7 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
         {paragraphs.map((para, i) => (
           <div key={i} style={{ paddingLeft: "2.5rem", position: "relative", borderLeft: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ position: "absolute", left: -5, top: 6, width: 10, height: 10, borderRadius: "50%", background: color, boxShadow: `0 0 10px ${color}99` }} />
-            <p style={{ color: "rgba(255,255,255,0.65)", lineHeight: 1.75, fontSize: "0.875rem" }}>{para}</p>
+            <p style={{ color: "rgba(255,255,255,0.65)", lineHeight: 1.8, fontSize: "1rem" }}>{para}</p>
           </div>
         ))}
       </section>
@@ -175,35 +167,106 @@ function SummaryTab({ transcriptKey, color }: { transcriptKey: string; color: st
 
 function QuizTab({ transcriptKey, color }: { transcriptKey: string; color: string }) {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [current, setCurrent] = useState(0);
   const [selected, setSelected] = useState<number | null>(null);
   const [answered, setAnswered] = useState<Record<number, number>>({});
   const [showResult, setShowResult] = useState(false);
+  const [count, setCount] = useState(10);
+  const [selectedModel, setSelectedModel] = useState<"haiku" | "sonnet" | "opus">("haiku");
 
-  useEffect(() => {
-    fetch(`/api/quiz?key=${encodeURIComponent(transcriptKey)}`)
+  const generate = () => {
+    setLoading(true);
+    setError("");
+    fetch(`/api/quiz?key=${encodeURIComponent(transcriptKey)}&count=${count}`)
       .then(r => r.json())
-      .then(d => { if (d.error) throw new Error(d.error); setQuestions(d.questions ?? []); })
+      .then(d => { if (d.error) throw new Error(d.error); setQuestions(prev => [...prev, ...(d.questions ?? [])]); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [transcriptKey]);
+  };
 
-  if (loading) return <Spinner color={color} />;
-  if (error) return <p style={{ color: "#f87171", textAlign: "center", padding: "2rem", fontSize: "0.875rem" }}>{error}</p>;
-  if (questions.length === 0) return null;
+  const sidePanel = (
+    <div style={{ width: 240, flexShrink: 0, display: "flex", flexDirection: "column", gap: "1rem", padding: "1.25rem", borderRadius: "1rem", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", position: "sticky", top: 80, alignSelf: "flex-start" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Quiz Controls</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth={2}><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="4" cy="12" r="2" fill="rgba(255,255,255,0.3)" stroke="none"/></svg>
+      </div>
+
+      <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+      {/* Add questions */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: "0.5625rem", fontFamily: "monospace", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.15em" }}>Add Questions</span>
+          <span style={{ fontSize: "0.9rem", fontWeight: 600, color, fontFamily: "monospace" }}>{count}</span>
+        </div>
+        <input type="range" min={3} max={30} step={1} value={count}
+          onChange={e => setCount(Number(e.target.value))}
+          style={{ width: "100%", accentColor: color, cursor: "pointer" }} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.5rem", fontFamily: "monospace", color: "rgba(255,255,255,0.15)" }}>
+          <span>3</span><span>30</span>
+        </div>
+        <button onClick={generate} disabled={loading}
+          style={{ padding: "0.5rem", borderRadius: "0.625rem", fontSize: "0.75rem", fontWeight: 600, cursor: loading ? "not-allowed" : "pointer", background: `${color}20`, color, border: `1px solid ${color}40`, opacity: loading ? 0.5 : 1, transition: "opacity .15s" }}>
+          {loading ? "Generating…" : "Generate"}
+        </button>
+        {error && <p style={{ fontSize: "0.625rem", color: "#f87171", textAlign: "center", margin: 0 }}>{error}</p>}
+      </div>
+
+      <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+      {/* Model */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <span style={{ fontSize: "0.5625rem", fontFamily: "monospace", color: "rgba(255,255,255,0.3)", textTransform: "uppercase", letterSpacing: "0.15em" }}>AI Model</span>
+        <div style={{ display: "flex", gap: "0.25rem" }}>
+          {(["haiku", "sonnet", "opus"] as const).map(m => (
+            <button key={m} onClick={() => setSelectedModel(m)}
+              style={{ flex: 1, padding: "0.375rem 0", borderRadius: "0.5rem", fontSize: "0.5625rem", fontFamily: "monospace", textTransform: "capitalize", fontWeight: 500, cursor: "pointer", border: selectedModel === m ? `1px solid ${color}60` : "1px solid rgba(255,255,255,0.08)", background: selectedModel === m ? `${color}18` : "transparent", color: selectedModel === m ? color : "rgba(255,255,255,0.35)", transition: "all .15s" }}>
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {questions.length > 0 && (
+        <>
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)" }} />
+          <button onClick={() => setShowResult(true)}
+            style={{ padding: "0.5rem", borderRadius: "0.625rem", fontSize: "0.75rem", fontWeight: 500, cursor: "pointer", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.6)", border: "1px solid rgba(255,255,255,0.1)" }}>
+            See results
+          </button>
+          <button onClick={() => { setQuestions([]); setCurrent(0); setSelected(null); setAnswered({}); setShowResult(false); }}
+            style={{ padding: "0.375rem", borderRadius: "0.625rem", fontSize: "0.625rem", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            Clear all
+          </button>
+        </>
+      )}
+    </div>
+  );
+
+  if (questions.length === 0) return (
+    <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: "4rem 0", color: "rgba(255,255,255,0.15)", fontSize: "0.875rem", fontFamily: "monospace" }}>
+        {loading ? <Spinner color={color} /> : "No questions yet — generate some →"}
+      </div>
+      {sidePanel}
+    </div>
+  );
 
   if (showResult) {
     const score = Object.entries(answered).filter(([i, a]) => questions[+i]?.correct === a).length;
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4rem 0", gap: "1.25rem" }}>
-        <div style={{ fontSize: "4rem", fontFamily: "'DM Serif Display',serif", color }}>{score}/{questions.length}</div>
-        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.875rem" }}>{score === questions.length ? "Perfect score!" : score >= questions.length / 2 ? "Good work!" : "Keep studying!"}</p>
-        <button onClick={() => { setCurrent(0); setSelected(null); setAnswered({}); setShowResult(false); }}
-          style={{ padding: "0.625rem 1.5rem", borderRadius: "0.75rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", background: `${color}20`, color, border: `1px solid ${color}40` }}>
-          Try again
-        </button>
+      <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "4rem 0", gap: "1.25rem" }}>
+          <div style={{ fontSize: "4rem", fontFamily: "'DM Serif Display',serif", color }}>{score}/{questions.length}</div>
+          <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.875rem" }}>{score === questions.length ? "Perfect score!" : score >= questions.length / 2 ? "Good work!" : "Keep studying!"}</p>
+          <button onClick={() => { setCurrent(0); setSelected(null); setAnswered({}); setShowResult(false); }}
+            style={{ padding: "0.625rem 1.5rem", borderRadius: "0.75rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", background: `${color}20`, color, border: `1px solid ${color}40` }}>
+            Try again
+          </button>
+        </div>
+        {sidePanel}
       </div>
     );
   }
@@ -211,36 +274,44 @@ function QuizTab({ transcriptKey, color }: { transcriptKey: string; color: strin
   const q = questions[current];
   const isAnswered = selected !== null;
 
+  const goTo = (idx: number) => {
+    setCurrent(idx);
+    setSelected(answered[idx] ?? null);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-      {/* Progress */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <div style={{ flex: 1, height: 3, borderRadius: 99, background: "rgba(255,255,255,0.08)" }}>
-          <div style={{ height: "100%", borderRadius: 99, background: color, width: `${(current / questions.length) * 100}%`, transition: "width .5s ease" }} />
+    <div style={{ display: "flex", gap: "1.5rem", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+      {/* Counter */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ height: 3, flex: 1, borderRadius: 99, background: "rgba(255,255,255,0.07)", marginRight: "1rem" }}>
+          <div style={{ height: "100%", borderRadius: 99, background: color, width: `${((current + 1) / questions.length) * 100}%`, transition: "width .4s ease" }} />
         </div>
-        <span style={{ fontSize: "0.625rem", fontFamily: "monospace", color: "rgba(255,255,255,0.3)" }}>{current + 1}/{questions.length}</span>
+        <span style={{ fontSize: "0.625rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.15em", color: "rgba(255,255,255,0.35)", whiteSpace: "nowrap" }}>
+          Question {String(current + 1).padStart(2, "0")} / {String(questions.length).padStart(2, "0")}
+        </span>
       </div>
 
       {/* Question card */}
-      <div style={{ padding: "1.5rem", borderRadius: "1rem", background: `${color}06`, border: `1px solid ${color}20` }}>
-        <p style={{ fontSize: "0.625rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.2em", color, marginBottom: "0.75rem" }}>Question {current + 1}</p>
-        <p style={{ color: "rgba(255,255,255,0.9)", fontSize: "1rem", lineHeight: 1.6, fontFamily: "'DM Serif Display',serif" }}>{q.question}</p>
+      <div style={{ padding: "2rem 2rem 2rem 1.75rem", borderRadius: "1rem", background: "rgba(255,255,255,0.03)", border: `1px solid rgba(255,255,255,0.07)`, borderLeft: `4px solid ${color}` }}>
+        <p style={{ color: "rgba(255,255,255,0.92)", fontSize: "1.3rem", lineHeight: 1.6, fontFamily: "'DM Serif Display',serif", margin: 0 }}>{q.question}</p>
       </div>
 
       {/* Options */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
         {q.options.map((opt, i) => {
-          let bg = "rgba(255,255,255,0.03)";
-          let border = "rgba(255,255,255,0.1)";
-          let clr = "rgba(255,255,255,0.75)";
+          let bg = "rgba(255,255,255,0.025)";
+          let borderClr = "rgba(255,255,255,0.08)";
+          let clr = "rgba(255,255,255,0.7)";
+          let letterClr = "rgba(255,255,255,0.25)";
           if (isAnswered) {
-            if (i === q.correct) { bg = "rgba(7, 142, 142,0.12)"; border = "#71f871"; clr = "#71f871"; }
-            else if (i === selected) { bg = "rgba(248,113,113,0.12)"; border = "#f87171"; clr = "#f87171"; }
+            if (i === q.correct) { bg = "rgba(7,142,142,0.1)"; borderClr = "#71f871"; clr = "#71f871"; letterClr = "#71f871"; }
+            else if (i === selected) { bg = "rgba(248,113,113,0.1)"; borderClr = "#f87171"; clr = "#f87171"; letterClr = "#f87171"; }
           }
           return (
             <button key={i} disabled={isAnswered} onClick={() => { setSelected(i); setAnswered(prev => ({ ...prev, [current]: i })); }}
-              style={{ textAlign: "left", padding: "0.875rem 1.25rem", borderRadius: "0.75rem", border: `1px solid ${border}`, background: bg, color: clr, fontSize: "0.875rem", cursor: isAnswered ? "default" : "pointer", transition: "all .15s" }}>
-              <span style={{ fontFamily: "monospace", fontSize: "0.625rem", marginRight: "0.75rem", opacity: 0.5 }}>{String.fromCharCode(65 + i)}</span>
+              style={{ textAlign: "left", padding: "1rem 1.5rem", borderRadius: "0.75rem", border: `1px solid ${borderClr}`, background: bg, color: clr, fontSize: "0.9375rem", cursor: isAnswered ? "default" : "pointer", transition: "all .15s", display: "flex", alignItems: "center", gap: "1rem" }}>
+              <span style={{ fontFamily: "monospace", fontSize: "0.75rem", fontWeight: 600, color: letterClr, minWidth: 18 }}>{String.fromCharCode(65 + i)}</span>
               {opt}
             </button>
           );
@@ -253,21 +324,26 @@ function QuizTab({ transcriptKey, color }: { transcriptKey: string; color: strin
         </div>
       )}
 
-      {isAnswered && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          {current < questions.length - 1 ? (
-            <button onClick={() => { setCurrent(c => c + 1); setSelected(null); }}
-              style={{ padding: "0.5rem 1.25rem", borderRadius: "0.75rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", background: `${color}20`, color, border: `1px solid ${color}40` }}>
-              Next →
-            </button>
-          ) : (
-            <button onClick={() => setShowResult(true)}
-              style={{ padding: "0.5rem 1.25rem", borderRadius: "0.75rem", fontSize: "0.875rem", fontWeight: 500, cursor: "pointer", background: color, color: "#000", border: "none" }}>
-              See results
-            </button>
-          )}
-        </div>
-      )}
+      {/* Nav */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "0.25rem" }}>
+        <button onClick={() => goTo(current - 1)} disabled={current === 0}
+          style={{ padding: "0.5rem 1.125rem", borderRadius: "0.625rem", fontSize: "0.8125rem", fontWeight: 500, cursor: current === 0 ? "default" : "pointer", background: "transparent", color: "rgba(255,255,255,0.4)", border: "1px solid rgba(255,255,255,0.1)", opacity: current === 0 ? 0.3 : 1, transition: "opacity .15s" }}>
+          Prev
+        </button>
+        {current < questions.length - 1 ? (
+          <button onClick={() => goTo(current + 1)}
+            style={{ padding: "0.5rem 1.5rem", borderRadius: "0.625rem", fontSize: "0.8125rem", fontWeight: 600, cursor: "pointer", background: isAnswered ? color : "rgba(255,255,255,0.07)", color: isAnswered ? "#000" : "rgba(255,255,255,0.35)", border: "none", transition: "all .15s" }}>
+            Next
+          </button>
+        ) : (
+          <button onClick={() => setShowResult(true)} disabled={!isAnswered}
+            style={{ padding: "0.5rem 1.5rem", borderRadius: "0.625rem", fontSize: "0.8125rem", fontWeight: 600, cursor: isAnswered ? "pointer" : "default", background: isAnswered ? color : "rgba(255,255,255,0.07)", color: isAnswered ? "#000" : "rgba(255,255,255,0.35)", border: "none", opacity: isAnswered ? 1 : 0.6, transition: "all .15s" }}>
+            See results
+          </button>
+        )}
+      </div>
+      </div>
+      {sidePanel}
     </div>
   );
 }
@@ -311,33 +387,29 @@ function FlashcardsTab({ transcriptKey, color }: { transcriptKey: string; color:
       </div>
 
       <div onClick={() => setFlipped(f => !f)}
-        style={{ borderRadius: "1rem", border: `1px solid ${flipped ? `${color}40` : "rgba(255,255,255,0.1)"}`, background: flipped ? `${color}10` : "rgba(255,255,255,0.03)", padding: "3rem 2rem", minHeight: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all .25s" }}>
-        <p style={{ fontSize: "0.625rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.2em", color: flipped ? color : "rgba(255,255,255,0.2)", marginBottom: "1.25rem" }}>
+        style={{ borderRadius: "1rem", border: `1px solid ${flipped ? `${color}40` : "rgba(255,255,255,0.1)"}`, background: flipped ? `${color}10` : "rgba(255,255,255,0.03)", padding: "4rem 2.5rem", minHeight: 280, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all .25s" }}>
+        <p style={{ fontSize: "0.6875rem", fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.2em", color: flipped ? color : "rgba(255,255,255,0.2)", marginBottom: "1.5rem" }}>
           {flipped ? "Definition" : "Term — click to flip"}
         </p>
-        <p style={{ textAlign: "center", lineHeight: 1.6, fontSize: flipped ? "0.875rem" : "1.25rem", color: flipped ? "rgba(255,255,255,0.75)" : "#fff", fontFamily: flipped ? "sans-serif" : "'DM Serif Display',serif", transition: "all .25s" }}>
+        <p style={{ textAlign: "center", lineHeight: 1.65, fontSize: flipped ? "1.0625rem" : "1.5rem", color: flipped ? "rgba(255,255,255,0.75)" : "#fff", fontFamily: flipped ? "sans-serif" : "'DM Serif Display',serif", transition: "all .25s" }}>
           {flipped ? card.definition : card.term}
         </p>
       </div>
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button onClick={() => { setFlipped(false); setTimeout(() => setIdx(i => Math.max(i - 1, 0)), 120); }} disabled={idx === 0}
-          style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.3 : 1, background: "transparent" }}>
-          ← Prev
+          style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: "0.875rem", cursor: idx === 0 ? "not-allowed" : "pointer", opacity: idx === 0 ? 0.3 : 1, background: "transparent" }}>
+          Prev
         </button>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button onClick={() => next(false)} disabled={idx === cards.length - 1}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", background: "rgba(248,113,113,0.06)", fontSize: "0.75rem", cursor: "pointer", opacity: idx === cards.length - 1 ? 0.3 : 1 }}>
-            Again
-          </button>
           <button onClick={() => next(true)} disabled={idx === cards.length - 1}
-            style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: `1px solid ${color}40`, color, background: `${color}10`, fontSize: "0.75rem", cursor: "pointer", opacity: idx === cards.length - 1 ? 0.3 : 1 }}>
+            style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: `1px solid ${color}40`, color, background: `${color}10`, fontSize: "0.875rem", cursor: "pointer", opacity: idx === cards.length - 1 ? 0.3 : 1 }}>
             Got it ✓
           </button>
         </div>
         <button onClick={() => { setFlipped(false); setTimeout(() => setIdx(i => Math.min(i + 1, cards.length - 1)), 120); }} disabled={idx === cards.length - 1}
-          style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: "0.75rem", cursor: idx === cards.length - 1 ? "not-allowed" : "pointer", opacity: idx === cards.length - 1 ? 0.3 : 1, background: "transparent" }}>
-          Next →
+          style={{ padding: "0.5rem 1rem", borderRadius: "0.625rem", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: "0.875rem", cursor: idx === cards.length - 1 ? "not-allowed" : "pointer", opacity: idx === cards.length - 1 ? 0.3 : 1, background: "transparent" }}>
+          Next
         </button>
       </div>
     </div>
@@ -427,7 +499,6 @@ function StudyContent() {
   const colorParam = searchParams.get("color");
   const [color, setColor] = useState(colorParam ?? "#4ade80");
   const [tab, setTab] = useState<Tab>("summary");
-
   const tabs: { id: Tab; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
     { id: "summary", label: "Summary", icon: <SummaryIcon /> },
     { id: "quiz", label: "Quiz", icon: <QuizIcon /> },
@@ -487,6 +558,7 @@ function StudyContent() {
         ))}
       </div>
 
+        {/* Model selector */}
         <button onClick={() => router.push("/dashboard")}
           style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", padding: "0.625rem 1rem", borderRadius: "0.75rem", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.5)", transition: "color .2s" }}>
           <BackIcon />
@@ -507,34 +579,21 @@ function StudyContent() {
             <input placeholder="Search insights…"
               style={{ paddingLeft: 32, paddingRight: 16, paddingTop: 6, paddingBottom: 6, fontSize: "0.75rem", borderRadius: "0.5rem", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.7)", outline: "none", width: 200 }} />
           </div>
-          <button style={{ padding: "0.375rem", borderRadius: "0.5rem", border: "none", background: "transparent", color: "rgba(255,255,255,0.35)", cursor: "pointer" }}>
-            <BookmarkIcon />
-          </button>
         </div>
       </header>
 
       {/* Main */}
-      <main style={{ position: "relative", zIndex: 10, marginLeft: 240, paddingTop: 80, paddingBottom: 100, paddingLeft: 48, paddingRight: 48 }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      <main style={{ position: "relative", zIndex: 10, marginLeft: 240, paddingTop: 80, paddingBottom: 60, paddingLeft: 40, paddingRight: 40 }}>
+        <div style={{ maxWidth: tab === "transcript" ? 900 : "none", margin: "0 auto" }}>
           {tab === "summary" && <SummaryTab transcriptKey={transcriptKey} color={color} />}
-          {tab === "quiz" && <QuizTab transcriptKey={transcriptKey} color={color} />}
+          <div style={{ display: tab === "quiz" ? "block" : "none" }}>
+            <QuizTab transcriptKey={transcriptKey} color={color} />
+          </div>
           {tab === "flashcards" && <FlashcardsTab transcriptKey={transcriptKey} color={color} />}
           {tab === "transcript" && <TranscriptTab transcriptKey={transcriptKey} color={color} />}
         </div>
       </main>
 
-      {/* FABs */}
-      <div style={{ position: "fixed", bottom: 32, right: 32, display: "flex", flexDirection: "column", gap: "0.75rem", zIndex: 50 }}>
-        <button style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.75rem 1.25rem", borderRadius: "99px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer", background: "rgba(20,28,24,0.9)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.7)", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", transition: "transform .15s" }}>
-          <BookmarkIcon />
-          Bookmark
-        </button>
-        <button onClick={() => window.print()}
-          style={{ display: "flex", alignItems: "center", gap: "0.625rem", padding: "0.75rem 1.25rem", borderRadius: "99px", fontSize: "0.8125rem", fontWeight: 500, cursor: "pointer", background: color, border: "none", color: "#000", boxShadow: `0 8px 32px ${color}50`, transition: "transform .15s" }}>
-          <ExportIcon />
-          Export PDF
-        </button>
-      </div>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');

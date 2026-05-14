@@ -45,9 +45,11 @@ export async function GET(req: NextRequest) {
   const key = req.nextUrl.searchParams.get("key");
   if (!key) return NextResponse.json({ error: "Missing key" }, { status: 400 });
 
+  const count = Math.min(Math.max(parseInt(req.nextUrl.searchParams.get("count") ?? "10"), 1), 30);
+
   try {
     // 1. Check cache
-    const cacheKey = key.replace(/\.txt$/, ".quiz.json");
+    const cacheKey = key.replace(/\.txt$/, `.quiz.${count}.json`);
     const cached = await getFromS3(cacheKey);
     if (cached) {
       console.log(`Cache hit: ${cacheKey}`);
@@ -65,13 +67,13 @@ export async function GET(req: NextRequest) {
       accept: "application/json",
       body: JSON.stringify({
         anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 2048,
+        max_tokens: 4096,
         system: "You are an academic study assistant that helps university students prepare for exams. You generate multiple choice comprehension questions in JSON format based on course material.",
         messages: [{
           role: "user",
-          content: `Generate 6 multiple choice comprehension questions based on this university lecture.
+          content: `Generate ${count} multiple choice comprehension questions based on this university lecture.
 
-Return a JSON array of exactly 6 objects, each with:
+Return a JSON array of exactly ${count} objects, each with:
 - "question": the question string
 - "options": array of exactly 4 answer strings
 - "correct": index (0-3) of the correct answer

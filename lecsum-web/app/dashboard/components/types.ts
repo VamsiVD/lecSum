@@ -55,5 +55,7 @@ export function timeAgo(iso?: string): string {
 }
 
 export function cleanName(raw: string) {
-  return raw.replace(/^[a-z0-9]+-\d+-/, "").replace(/\.[^.]+$/, "");
+  const withoutPrefix = raw.replace(/^[a-z0-9]+-\d+-/, "");
+  if (withoutPrefix !== raw) return withoutPrefix;
+  return raw.replace(/\.[^.]+$/, "");
 }
