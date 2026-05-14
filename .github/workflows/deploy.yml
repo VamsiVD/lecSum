@@ -36,22 +36,52 @@ jobs:
       - run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
       - run: vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
 
-  deploy-production:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Package and deploy Lambdas
+        run: |
+          bash scripts/deploy.sh staging
+
+      # - name: Run smoke tests against staging
+      #  run: |
+      #    pytest tests/integration/ -v --env=staging
+
+# ── 3. DEPLOY TO PROD ─────────────────────────────────────────────────────
+  deploy-prod:
+    name: Deploy → prod
     needs: test
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://lecsum.vercel.app
-    env:
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    environment: prod
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: '22.x'
-      - run: npm i -g vercel@latest
-      - run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-      - run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
-      - run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ADD THIS STEP: Install the test tools in this specific environment
+      - name: Install test dependencies
+        run: |
+          pip install -r requirements-dev.txt
+
+      - name: Package and deploy Lambdas
+        run: |
+          bash scripts/deploy.sh prod
+
+      - name: Run smoke tests against prod
+        run: |
+          pytest tests/integration/ -v --env=prod
