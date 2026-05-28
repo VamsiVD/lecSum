@@ -312,18 +312,17 @@ const fetchJobs = useCallback(async () => {
       const up = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
       if (!up.ok) throw new Error("Upload failed");
 
+      const docFormats = new Set(["pdf", "jpg", "jpeg", "png", "tiff", "docx", "pptx"]);
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
       const optimisticJob: Job = {
-        uploadKey: key,        // ← use key from API response, not file.name
-        fileName: file.name,   // ← display name stays as original filename
+        uploadKey: key,
+        fileName: file.name,
         displayName: cleanName(file.name),
-        status: "transcribing",
+        status: docFormats.has(ext) ? "extracting" : "transcribing",
         createdAt: new Date().toISOString(),
         course: course || undefined,
       };
       setJobs(prev => [optimisticJob, ...prev]);
-
-      const docFormats = new Set(["pdf", "jpg", "jpeg", "png", "tiff"]);
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
 
       if (docFormats.has(ext)) {
         fetch("/api/extract", {
