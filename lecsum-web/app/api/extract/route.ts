@@ -116,6 +116,22 @@ async function extractPptx(buf: Buffer): Promise<string> {
   return slides.join("\n\n");
 }
 
+// Magic-byte signatures for each allowed type
+const MAGIC: Record<string, (b: Uint8Array) => boolean> = {
+  pdf:  b => b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46, // %PDF
+  docx: b => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04, // PK (ZIP)
+  pptx: b => b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04, // PK (ZIP)
+  jpg:  b => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  jpeg: b => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
+  png:  b => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47,
+};
+
+function validateMagicBytes(buf: Uint8Array, ext: string): boolean {
+  const check = MAGIC[ext];
+  if (!check) return true; // no signature defined — allow through
+  return check(buf);
+}
+
 async function refineWithClaude(rawText: string, fileType: string): Promise<string> {
   const response = await bedrock.send(new InvokeModelCommand({
     modelId: MODEL_ID,
@@ -159,6 +175,14 @@ export async function POST(req: NextRequest) {
     }));
     const fileBytes = await obj.Body!.transformToByteArray();
     const buf = Buffer.from(fileBytes);
+
+    if (!validateMagicBytes(fileBytes, ext)) {
+      await updateDynamo(uploadKey, userId, "error").catch(() => { });
+      return NextResponse.json(
+        { error: "File content does not match its extension." },
+        { status: 415 }
+      );
+    }
 
     let extractedText: string;
 

@@ -3,7 +3,10 @@ import {
   DynamoDBClient,
   UpdateItemCommand,
   DeleteItemCommand,
+  GetItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { auth } from "@clerk/nextjs/server";
+import { sanitizeDisplayName } from "@/lib/sanitize";
 
 const dynamo = new DynamoDBClient({
   region: process.env.AWS_REGION!,
@@ -13,16 +16,34 @@ const dynamo = new DynamoDBClient({
   },
 });
 
+async function ownsRecord(uploadKey: string, userId: string): Promise<boolean> {
+  const result = await dynamo.send(new GetItemCommand({
+    TableName: "lecsum-jobs",
+    Key: { uploadKey: { S: uploadKey } },
+    ProjectionExpression: "userId",
+  }));
+  return result.Item?.userId?.S === userId;
+}
+
 // PATCH /api/lectures/[uploadKey] — update course assignment or rename
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ uploadKey: string }> }
 ) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { uploadKey } = await params;
   const key = decodeURIComponent(uploadKey);
-  const { course, displayName } = await req.json();
 
-  // Arrays/Objects to dynamically build our DynamoDB update query
+  if (!await ownsRecord(key, userId)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await req.json();
+  const { course } = body;
+  const displayName = sanitizeDisplayName(body.displayName);
+
   const updateParts: string[] = [];
   const ExpressionAttributeNames: Record<string, string> = {};
   const ExpressionAttributeValues: Record<string, { S: string }> = {};
@@ -30,16 +51,15 @@ export async function PATCH(
   if (course !== undefined) {
     updateParts.push("#c = :c");
     ExpressionAttributeNames["#c"] = "course";
-    ExpressionAttributeValues[":c"] = { S: course };
+    ExpressionAttributeValues[":c"] = { S: String(course).slice(0, 64) };
   }
 
-  if (displayName !== undefined) {
+  if (displayName !== null) {
     updateParts.push("#dn = :dn");
     ExpressionAttributeNames["#dn"] = "displayName";
     ExpressionAttributeValues[":dn"] = { S: displayName };
   }
 
-  // If nothing was passed to update, just return early
   if (updateParts.length === 0) {
     return NextResponse.json({ success: true, note: "No fields to update" });
   }
@@ -55,7 +75,6 @@ export async function PATCH(
       })
     );
     return NextResponse.json({ success: true });
-
   } catch (err) {
     console.error("Update error:", err);
     return NextResponse.json({ error: String(err) }, { status: 500 });
@@ -67,8 +86,15 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ uploadKey: string }> }
 ) {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
   const { uploadKey } = await params;
   const key = decodeURIComponent(uploadKey);
+
+  if (!await ownsRecord(key, userId)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     await dynamo.send(

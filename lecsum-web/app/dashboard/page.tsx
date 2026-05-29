@@ -299,21 +299,34 @@ const fetchJobs = useCallback(async () => {
   const handleUpload = async (file: File, course: string) => {
     setUploading(true); setUploadError("");
     try {
+      // Client-side size guard (mirrors server limits)
+      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+      const audioExts = new Set(["mp3","wav","m4a","flac","ogg","webm","amr"]);
+      const docExts   = new Set(["pdf","docx","pptx"]);
+      const limitMB   = audioExts.has(ext) ? 200 : docExts.has(ext) ? 50 : 20;
+      if (file.size > limitMB * 1024 * 1024) {
+        setUploadError(`File too large. Max size for .${ext} is ${limitMB} MB.`);
+        setUploading(false);
+        return;
+      }
+
       const hashBuffer = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
       const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
 
       const res = await fetch("/api/upload-url", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", hash }),
+        body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", hash, fileSize: file.size }),
       });
-      if (!res.ok) throw new Error("Failed to get upload URL");
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error ?? "Failed to get upload URL");
+      }
       const { url, key } = await res.json(); // ← key now comes back as userId/filename
       
       const up = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
       if (!up.ok) throw new Error("Upload failed");
 
       const docFormats = new Set(["pdf", "jpg", "jpeg", "png", "tiff", "docx", "pptx"]);
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
       const optimisticJob: Job = {
         uploadKey: key,
         fileName: file.name,
