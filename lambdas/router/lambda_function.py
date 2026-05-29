@@ -30,15 +30,24 @@ DOCUMENT_FORMATS = {"pdf", "docx", "pptx", "jpg", "jpeg", "png", "tiff", "tif"}
 
 def write_dynamo(upload_key: str, file_name: str, status: str, job_name: str = ""):
     table = dynamodb.Table(TABLE_NAME)
-    item = {
-        "uploadKey": upload_key,
-        "fileName": file_name,
-        "status": status,
-        "createdAt": datetime.now(timezone.utc).isoformat(),
+    # update_item preserves existing fields (userId, displayName, course)
+    # written by the upload-url API — put_item would wipe them
+    expr = "SET #s = :s, fileName = :fn, createdAt = :ts"
+    names = {"#s": "status"}
+    values = {
+        ":s": status,
+        ":fn": file_name,
+        ":ts": datetime.now(timezone.utc).isoformat(),
     }
     if job_name:
-        item["jobName"] = job_name
-    table.put_item(Item=item)
+        expr += ", jobName = :jn"
+        values[":jn"] = job_name
+    table.update_item(
+        Key={"uploadKey": upload_key},
+        UpdateExpression=expr,
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues=values,
+    )
 
 
 def handle_audio(bucket: str, key: str, upload_key: str, file_name: str, ext: str):

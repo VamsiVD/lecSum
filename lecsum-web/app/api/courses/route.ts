@@ -4,6 +4,8 @@ import {
   GetItemCommand,
   PutItemCommand,
 } from "@aws-sdk/client-dynamodb";
+import { auth } from "@clerk/nextjs/server";
+import { sanitizeCourseName } from "@/lib/sanitize";
 
 const dynamo = new DynamoDBClient({
   region: process.env.AWS_REGION!,
@@ -12,8 +14,6 @@ const dynamo = new DynamoDBClient({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
-
-import { auth } from "@clerk/nextjs/server";
 
 const TABLE = "lecsum-jobs";
 
@@ -39,15 +39,25 @@ export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const PK = `courses:${userId}`;  // ← per-user key
+  const PK = `courses:${userId}`;
   const { courses } = await req.json();
+
+  if (!Array.isArray(courses) || courses.length > 50) {
+    return NextResponse.json({ error: "Invalid courses payload" }, { status: 400 });
+  }
+
+  // Sanitize each course name before persisting
+  const sanitized = courses.map((c: Record<string, unknown>) => ({
+    ...c,
+    name: sanitizeCourseName(c.name) ?? "Untitled",
+  }));
 
   try {
     await dynamo.send(new PutItemCommand({
       TableName: TABLE,
       Item: {
         uploadKey: { S: PK },
-        data: { S: JSON.stringify(courses) },
+        data: { S: JSON.stringify(sanitized) },
         userId: { S: userId },
       },
     }));

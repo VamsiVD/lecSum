@@ -25,6 +25,7 @@ interface UploadZoneProps {
 
 export function UploadZone({ courses, selectedCourse, onSelectCourse, onUpload, uploading, uploadError, isDark }: UploadZoneProps) {
   const [draggingFile, setDraggingFile] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<"haiku" | "sonnet" | "opus">("haiku");
 
   const selectedLabel = courses.find(c => c.id === selectedCourse)?.name ?? "No course";
   const selectedColor = courses.find(c => c.id === selectedCourse)?.color;
@@ -86,6 +87,31 @@ export function UploadZone({ courses, selectedCourse, onSelectCourse, onUpload, 
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Model selector */}
+      <div className="mb-3">
+        <div className={`text-[9px] uppercase tracking-widest mb-1.5 ${T.textFaint}`}>AI Model</div>
+        <div className="flex gap-1.5">
+          {(["haiku", "sonnet", "opus"] as const).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setSelectedModel(m)}
+              className={`flex-1 text-[10px] font-mono py-1 rounded-md border transition-all capitalize ${
+                selectedModel === m
+                  ? isDark
+                    ? "border-green-400/40 bg-green-400/10 text-green-400"
+                    : "border-green-600/40 bg-green-600/8 text-green-700"
+                  : isDark
+                    ? "border-white/8 text-white/30 hover:text-white/60 hover:border-white/15"
+                    : "border-black/8 text-gray-400 hover:text-gray-600 hover:border-black/15"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Drop zone */}
       <label

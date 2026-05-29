@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { auth } from "@clerk/nextjs/server";
 import { DynamoDBClient, PutItemCommand } from "@aws-sdk/client-dynamodb";
+import { sanitizeFilename } from "@/lib/sanitize";
 
 const s3 = new S3Client({
   region: process.env.AWS_REGION!,
@@ -26,6 +27,18 @@ const ALLOWED_EXTENSIONS = new Set([
   "jpg", "jpeg", "png", "tiff",
 ]);
 
+const MAX_BYTES: Record<string, number> = {
+  audio: 200 * 1024 * 1024, //  200 MB
+  doc:    50 * 1024 * 1024, //   50 MB
+  image:  20 * 1024 * 1024, //   20 MB
+};
+
+function maxBytesForExt(ext: string): number {
+  if (["mp3","wav","m4a","flac","ogg","webm","amr"].includes(ext)) return MAX_BYTES.audio;
+  if (["pdf","docx","pptx"].includes(ext))                          return MAX_BYTES.doc;
+  return MAX_BYTES.image;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
@@ -33,10 +46,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { filename, contentType } = await req.json();
+    const { filename: rawFilename, contentType, fileSize } = await req.json();
 
+    const filename = sanitizeFilename(rawFilename);
     if (!filename) {
-      return NextResponse.json({ error: "Missing filename" }, { status: 400 });
+      return NextResponse.json({ error: "Missing or invalid filename" }, { status: 400 });
     }
 
     const ext = filename.split(".").pop()?.toLowerCase() ?? "";
@@ -45,6 +59,17 @@ export async function POST(req: NextRequest) {
         { error: `Unsupported file type: .${ext}` },
         { status: 400 }
       );
+    }
+
+    if (typeof fileSize === "number") {
+      const limit = maxBytesForExt(ext);
+      if (fileSize > limit) {
+        const limitMB = limit / 1024 / 1024;
+        return NextResponse.json(
+          { error: `File too large. Max size for .${ext} is ${limitMB} MB.` },
+          { status: 413 }
+        );
+      }
     }
 
     const key = `${userId}/${filename}`;
