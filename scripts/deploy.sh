@@ -25,10 +25,6 @@ deploy_lambda() {
 
   echo "--- Deploying $function_name ---"
 
-  # Create ECR repo if it doesn't exist
-  aws ecr describe-repositories --repository-names "$repo_name" --region "$REGION" > /dev/null 2>&1 \
-    || aws ecr create-repository --repository-name "$repo_name" --region "$REGION" > /dev/null
-
   # Build and push
   docker buildx build \
     --platform linux/amd64 \
