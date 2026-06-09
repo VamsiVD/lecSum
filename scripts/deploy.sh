@@ -30,9 +30,11 @@ deploy_lambda() {
     || aws ecr create-repository --repository-name "$repo_name" --region "$REGION" > /dev/null
 
   # Build and push
-  docker build --platform linux/amd64 -t "${repo_name}:${image_tag}" "$dir"
-  docker tag "${repo_name}:${image_tag}" "$image_uri"
-  docker push "$image_uri"
+  docker buildx build \
+    --platform linux/amd64 \
+    --provenance=false \
+    --output "type=image,name=${image_uri},push=true,compression=gzip,force-compression=true" \
+    "$dir"
 
   # Update Lambda (function must have PackageType=Image)
   aws lambda update-function-code \
@@ -54,7 +56,6 @@ deploy_lambda() {
 }
 
 LAMBDAS=(
-  "transcribe_trigger"
   "transcript_parser"
   "router"
 )
