@@ -6,51 +6,51 @@ REGION=${AWS_REGION:-us-east-2}
 
 echo "Deploying to environment: $ENV"
 
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+ECR_BASE="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+
+# Login to ECR once
+aws ecr get-login-password --region "$REGION" \
+  | docker login --username AWS --password-stdin "$ECR_BASE"
+
 deploy_lambda() {
   local name=$1
   local dir="lambdas/$name"
+  local repo_name="lecsum-${name//_/-}"
   local function_name="lecsum-${name//_/-}-${ENV}"
-  local tmp="/tmp/lambda-${name}-${ENV}"
+  local sha
+  sha=$(git rev-parse --short HEAD)
+  local image_tag="${ENV}-${sha}"
+  local image_uri="${ECR_BASE}/${repo_name}:${image_tag}"
 
   echo "--- Deploying $function_name ---"
 
-  rm -rf "$tmp" && mkdir -p "$tmp"
+  # Create ECR repo if it doesn't exist
+  aws ecr describe-repositories --repository-names "$repo_name" --region "$REGION" > /dev/null 2>&1 \
+    || aws ecr create-repository --repository-name "$repo_name" --region "$REGION" > /dev/null
 
-  # Install dependencies if requirements.txt exists
-  if [ -f "$dir/requirements.txt" ]; then
-    echo "Installing dependencies for $name..."
-    pip install -r "$dir/requirements.txt" -t "$tmp" --quiet
-  fi
+  # Build and push
+  docker build --platform linux/amd64 -t "${repo_name}:${image_tag}" "$dir"
+  docker tag "${repo_name}:${image_tag}" "$image_uri"
+  docker push "$image_uri"
 
-  # Copy Lambda handler on top
-  cp "$dir/lambda_function.py" "$tmp/"
-
-  # Zip it up
-  cd "$tmp"
-  zip -r "/tmp/${name}-${ENV}.zip" . --quiet
-  cd - > /dev/null
-
-  # Deploy
+  # Update Lambda (function must have PackageType=Image)
   aws lambda update-function-code \
     --function-name "$function_name" \
-    --zip-file "fileb:///tmp/${name}-${ENV}.zip" \
+    --image-uri "$image_uri" \
     --region "$REGION" \
     --output text > /dev/null
 
-  # Wait for update to complete
   aws lambda wait function-updated \
     --function-name "$function_name" \
     --region "$REGION"
 
-  # Tag with git SHA
-  local sha
-  sha=$(git rev-parse --short HEAD)
   aws lambda tag-resource \
-    --resource "arn:aws:lambda:${REGION}:$(aws sts get-caller-identity --query Account --output text):function:${function_name}" \
+    --resource "arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:${function_name}" \
     --tags "GitSHA=${sha},Environment=${ENV}" \
     --region "$REGION" 2>/dev/null || true
 
-  echo "✅ $function_name deployed"
+  echo "✅ $function_name deployed ($image_tag)"
 }
 
 LAMBDAS=(
